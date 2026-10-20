@@ -163,6 +163,17 @@ pub async fn knob_subscribe(app: tauri::AppHandle, state: State<'_, AppState>) -
 /// "Consumer Control" node, so every node of the device is listened to at once
 /// and only the consumer codes are classified as knob input. When the nodes
 /// are not readable we fall back to capturing the raw HID stream.
+/// Report the window's presentation state (maximised / fullscreen) so the
+/// shell can drop the rounded corners when the window fills the screen.
+#[tauri::command]
+pub fn window_presentation(window: tauri::WebviewWindow) -> Result<serde_json::Value, String> {
+    Ok(serde_json::json!({
+        "maximized": window.is_maximized().unwrap_or(false),
+        "fullscreen": window.is_fullscreen().unwrap_or(false),
+    }))
+}
+
+/// Read the knob's evdev events for a few seconds and summarise them.
 #[tauri::command]
 pub async fn knob_events(seconds: Option<u32>) -> Result<serde_json::Value, String> {
     let secs = seconds.unwrap_or(5).clamp(1, 60);

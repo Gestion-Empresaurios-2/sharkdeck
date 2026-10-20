@@ -355,8 +355,29 @@ function drawWidget(ctx: CanvasRenderingContext2D, x: number, y: number, w: numb
   text(ctx, d.value, x + 6, y + 24, 12, '#ffffff', { weight: 760 });
 }
 
+// Wallpaper cache — the gradient + ridge are static per (wallpaper, size), so
+// we paint them once into an offscreen canvas and blit them every frame.
+let wallCache: { key: string; canvas: HTMLCanvasElement } | null = null;
+
+function cachedWallpaper(ctx: CanvasRenderingContext2D, w: number, h: number) {
+  const wall = osWall();
+  const key = `${osState.settings.wall}|${wall.stops.join(',')}|${wall.glow}|${w}x${h}`;
+  if (!wallCache || wallCache.key !== key) {
+    const c = document.createElement('canvas');
+    c.width = w;
+    c.height = h;
+    const cx = c.getContext('2d');
+    if (cx) {
+      wallpaper(cx, w, h);
+      wallCache = { key, canvas: c };
+    }
+  }
+  if (wallCache) ctx.drawImage(wallCache.canvas, 0, 0);
+  else wallpaper(ctx, w, h);
+}
+
 function lockPage(ctx: CanvasRenderingContext2D, w: number, h: number) {
-  wallpaper(ctx, w, h);
+  cachedWallpaper(ctx, w, h);
   const t = timeParts();
   const a = osAccent();
   const layout = osState.settings.layout;

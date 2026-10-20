@@ -227,3 +227,7 @@ export type KnobAction = { dir: 'left' | 'right' | 'press'; code: number };
 /** Start listening to the keyboard's native knob (idempotent). */
 export const knobSubscribe = () =>
   invoke<{ nodes: string[]; active: boolean }>('knob_subscribe');
+
+/** Window presentation (maximised / fullscreen) — drives the rounded corners. */
+export const windowPresentation = () =>
+  invoke<{ maximized: boolean; fullscreen: boolean }>('window_presentation');

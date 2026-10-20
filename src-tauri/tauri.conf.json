@@ -19,7 +19,10 @@
         "minHeight": 660,
         "resizable": true,
         "center": true,
-        "decorations": false
+        "decorations": false,
+        "transparent": true,
+        "backgroundColor": "#00000000",
+        "shadow": true
       }
     ],
     "security": {

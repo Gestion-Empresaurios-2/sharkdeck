@@ -51,6 +51,7 @@ pub fn run() {
             commands::knob_devices,
             commands::knob_events,
             commands::knob_subscribe,
+            commands::window_presentation,
             commands::pick_open_image,
             commands::pick_open_json,
             commands::pick_save_file,

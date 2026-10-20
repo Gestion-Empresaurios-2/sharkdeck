@@ -1,13 +1,36 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import * as api from '../lib/tauri';
-  import { store, toast, errText } from '../lib/store.svelte.ts';
+  import { store, toast, errText, connected } from '../lib/store.svelte.ts';
   import type { KbOptions, LightingState } from '../lib/types';
 
   let profile = $state(0);
   let options = $state<KbOptions | null>(null);
   let light = $state<LightingState | null>(null);
   let busy = $state(false);
+  let probeRows = $state<api.OpcodeRow[]>([]);
+  let fullHex = $state<{ op: number; hex: string } | null>(null);
+
+  async function runProbe() {
+    busy = true;
+    try {
+      const res = await api.opcodeProbe();
+      probeRows = res.rows;
+      toast('ok', `${res.rows.length} opcodes probed`);
+    } catch (e) {
+      toast('err', errText(e));
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function showFull(op: number) {
+    try {
+      fullHex = await api.opcodeFull(op);
+    } catch (e) {
+      toast('err', errText(e));
+    }
+  }
 
   async function backupSettings() {
     busy = true;
@@ -272,10 +295,92 @@
         The reverse-engineering programme for a real firmware image lives in <code>re/PLAN.md</code>.
       </p>
     </section>
+
+    <section class="panel">
+      <h3>Opcode lab</h3>
+      <p class="hint">
+        Read-only reconnaissance of the keyboard's command set. Each opcode is probed against a
+        known-good baseline (device id <code>0x8F</code> → 1168): a reply that merely repeats the
+        baseline means the firmware is <em>not</em> implementing that opcode. Destructive opcodes are
+        blocked in the transport layer and are never sent.
+      </p>
+      <div class="row">
+        <button class="btn sm" onclick={runProbe} disabled={busy || !connected()}>
+          Scan 0x80–0x9F
+        </button>
+        <span class="hint">{probeRows.length ? `${probeRows.length} opcodes probed` : 'not scanned yet'}</span>
+      </div>
+      {#if probeRows.length}
+        <div class="op-grid">
+          {#each probeRows as r}
+            <button
+              class="op-row"
+              class:live={r.alive && r.verdict.startsWith('implemented')}
+              class:blocked={r.verdict.startsWith('blocked')}
+              onclick={() => showFull(r.op)}
+              title="click for the full 64-byte reply"
+            >
+              <span class="mono">0x{r.op.toString(16).toUpperCase().padStart(2, '0')}</span>
+              <span class="op-verdict">{r.verdict}</span>
+              {#if r.head}<span class="mono op-head">{r.head}</span>{/if}
+            </button>
+          {/each}
+        </div>
+      {/if}
+      {#if fullHex}
+        <p class="hint" style="margin-top:10px">
+          <span class="mono">0x{fullHex.op.toString(16).toUpperCase().padStart(2, '0')}</span>
+          <span class="mono op-head">{fullHex.hex}</span>
+        </p>
+      {/if}
+    </section>
   </div>
 </div>
 
 <style>
+
+  .op-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 4px;
+    margin-top: 12px;
+  }
+  .op-row {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    width: 100%;
+    text-align: left;
+    padding: 6px 8px;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--ink-60, #757575);
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .op-row:hover {
+    background: var(--surface-hover, rgba(0, 0, 0, 0.04));
+  }
+  .op-row.live {
+    color: var(--ink, #000);
+  }
+  .op-row.live .op-verdict {
+    color: var(--ok, #0f7b6c);
+  }
+  .op-row.blocked {
+    color: var(--err, #d44c47);
+  }
+  .op-verdict {
+    flex: 1;
+    font-size: 12px;
+  }
+  .op-head {
+    font-size: 10.5px;
+    color: var(--ink-40, rgba(0, 0, 0, 0.4));
+    letter-spacing: 0.02em;
+  }
+
   .grid.two {
     grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
     align-items: start;

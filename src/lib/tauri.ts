@@ -206,3 +206,9 @@ export const knobEvents = (seconds = 5) =>
   invoke<{ device: InputDevice; summary: KnobSummary; events: number }>('knob_events', {
     seconds,
   });
+
+export type OpcodeRow = { op: number; verdict: string; alive: boolean; head: string };
+export const opcodeProbe = (ops?: number[]) =>
+  invoke<{ rows: OpcodeRow[] }>('opcode_probe', { ops });
+export const opcodeFull = (op: number) =>
+  invoke<{ op: number; hex: string }>('opcode_full', { op });

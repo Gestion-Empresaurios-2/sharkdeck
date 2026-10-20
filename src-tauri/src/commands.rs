@@ -16,6 +16,87 @@ pub fn battery_probe(app: State<AppState>) -> Result<Option<u8>, String> {
     kb.battery_probe()
 }
 
+/// Read-only opcode explorer. For each opcode we poison the reply cache with
+/// a known-good request (0x8F = device id 1168), send the opcode, then send
+/// 0x8F again: a reply identical to the baseline means the firmware merely
+/// replayed its previous answer (unimplemented opcode), while a reply that
+/// starts with the opcode was really produced by the dispatcher.
+#[tauri::command]
+pub fn opcode_probe(ops: Option<Vec<u8>>) -> Result<serde_json::Value, String> {
+    let api = sharkdeck_core::hid::ApiBox::new().map_err(|e| e.to_string())?;
+    let api: sharkdeck_core::hid::SharedApi = Arc::new(api);
+    let Some(kb) = Keyboard::find_in(&api)? else {
+        return Err("no K86 found (VID:PID 3151:4015 / handshake 1168)".into());
+    };
+    let list: Vec<u8> = ops
+        .unwrap_or_else(|| (0x80u8..=0x9F).collect())
+        .into_iter()
+        .filter(|op| *op != 0x8F)
+        .collect();
+    let baseline = kb.debug_query(0x8F).unwrap_or([0u8; 64]);
+    let mut rows = Vec::new();
+    for op in list {
+        if Keyboard::DANGEROUS_OPS.contains(&op) {
+            rows.push(serde_json::json!({
+                "op": op,
+                "verdict": "blocked (destructive — erase/reset/boot)",
+                "alive": true,
+                "head": "",
+            }));
+            continue;
+        }
+        let reply = match kb.debug_query(op) {
+            Ok(r) => r,
+            Err(e) => {
+                rows.push(serde_json::json!({
+                    "op": op,
+                    "verdict": format!("error: {e}"),
+                    "alive": false,
+                    "head": "",
+                }));
+                continue;
+            }
+        };
+        let after = kb.debug_query(0x8F).unwrap_or([0u8; 64]);
+        let alive = after == baseline;
+        let head: String = reply[..8].iter().map(|b| format!("{b:02x}")).collect();
+        let verdict = if reply == baseline {
+            "unimplemented (replays previous reply)"
+        } else if reply[0] == op {
+            "implemented"
+        } else {
+            "implemented (no opcode echo)"
+        };
+        rows.push(serde_json::json!({
+            "op": op,
+            "verdict": verdict,
+            "alive": alive,
+            "head": head,
+        }));
+    }
+    Ok(serde_json::json!({ "rows": rows }))
+}
+
+/// Full 64-byte reply of a single read-only opcode, hex encoded.
+#[tauri::command]
+pub fn opcode_full(op: u8) -> Result<serde_json::Value, String> {
+    let api = sharkdeck_core::hid::ApiBox::new().map_err(|e| e.to_string())?;
+    let api: sharkdeck_core::hid::SharedApi = Arc::new(api);
+    let Some(kb) = Keyboard::find_in(&api)? else {
+        return Err("no K86 found (VID:PID 3151:4015 / handshake 1168)".into());
+    };
+    if Keyboard::DANGEROUS_OPS.contains(&op) {
+        return Err(format!(
+            "opcode {op:02X} is destructive (erase/reset/boot) and is blocked by SharkDeck"
+        ));
+    }
+    let reply = kb.debug_query(op)?;
+    Ok(serde_json::json!({
+        "op": op,
+        "hex": reply.iter().map(|b| format!("{b:02x}")).collect::<String>(),
+    }))
+}
+
 /// List the kernel input nodes so the UI can show which device the knob
 /// lives on (and whether we may read it).
 #[tauri::command]

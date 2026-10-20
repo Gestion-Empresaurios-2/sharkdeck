@@ -17,6 +17,7 @@
     type OsPage,
     type LockLayout,
   } from '../lib/os.svelte';
+  import { listen } from '@tauri-apps/api/event';
   import { store, toast, errText } from '../lib/store.svelte';
   import { startLive, stopLive, live } from '../lib/live';
   import * as api from '../lib/tauri';
@@ -50,10 +51,24 @@
       paint();
     }, 66);
     window.addEventListener('keydown', onKey);
+    // Native knob: the backend watches the keyboard's evdev node and emits
+    // 'sharkdeck://knob' for every detent (turn left / turn right / press).
+    void api
+      .knobSubscribe()
+      .then((r) => (knobNodes = r.nodes))
+      .catch(() => (knobNodes = []));
+    const unlisten = listen<api.KnobAction>('sharkdeck://knob', (e) => {
+      const dir = e.payload?.dir;
+      if (!knobControl) return;
+      if (dir === 'left') cycle(-1);
+      else if (dir === 'right') cycle(1);
+      else if (dir === 'press') void push(true);
+    });
     return () => {
       clearInterval(t);
       stopLive();
       window.removeEventListener('keydown', onKey);
+      void unlisten.then((fn) => fn());
     };
   });
 
@@ -133,6 +148,8 @@
   /* Carousel: ONE push whose frames are the 9 screens; the keyboard then
      rotates them on its own — no further pushes needed. */
   let dwell = $state(100);
+  let knobControl = $state(false);
+  let knobNodes = $state<string[]>([]);
   async function pushCarousel() {
     if (!store.device) return toast('err', 'No device connected');
     busy = true;
@@ -517,6 +534,22 @@
         <span>City</span>
         <input type="text" maxlength="20" bind:value={osState.settings.city} />
       </label>
+    </section>
+
+    <section class="insp-sec">
+      <div class="insp-title">Knob control</div>
+      <label class="switch-row">
+        <input type="checkbox" bind:checked={knobControl} />
+        <span>Let the knob drive the screen</span>
+      </label>
+      <p class="hint">
+        Turn left / right to change the keyboard screen, press to push the current one.
+        {#if knobNodes.length}
+          Reading {knobNodes[0]}.
+        {:else}
+          No keyboard input node found — check the udev rule.
+        {/if}
+      </p>
     </section>
 
     <section class="insp-sec">

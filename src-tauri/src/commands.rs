@@ -119,6 +119,50 @@ pub fn knob_devices() -> Result<serde_json::Value, String> {
 /// ("ROYUAN Gaming Keyboard Mouse"). That node needs `input`-group access; when
 /// it is not permitted we fall back to capturing the raw HID stream of the
 /// vendor interface so knob activity is still observable.
+/// Subscribe to live knob events. A background thread watches the keyboard's
+/// evdev nodes and emits `sharkdeck://knob` events (`{ dir, code }`) for every
+/// detent: turn left / turn right / press.
+///
+/// Calling it twice is safe — the subscription is only started once.
+#[tauri::command]
+pub fn knob_subscribe(app: tauri::AppHandle, state: State<AppState>) -> Result<serde_json::Value, String> {
+    use std::sync::atomic::Ordering;
+    use tauri::Emitter;
+
+    let devices = sharkdeck_core::events::list_devices();
+    let nodes: Vec<String> = devices
+        .iter()
+        .filter(|d| sharkdeck_core::events::is_knob_device(&d.name))
+        .map(|d| d.path.clone())
+        .collect();
+    if nodes.is_empty() {
+        return Err("no keyboard input nodes found".into());
+    }
+
+    if !state.knob_watch_started.swap(true, Ordering::SeqCst) {
+        let handle = app.clone();
+        std::thread::spawn(move || {
+            sharkdeck_core::events::watch_knob(nodes.clone(), move |action| {
+                let _ = handle.emit("sharkdeck://knob", &action);
+            });
+        });
+    }
+
+    let names: Vec<String> = devices
+        .iter()
+        .filter(|d| sharkdeck_core::events::is_knob_device(&d.name))
+        .map(|d| format!("{} ({})", d.name, d.path))
+        .collect();
+    Ok(serde_json::json!({ "nodes": names, "active": true }))
+}
+
+/// Listen to the keyboard's native knob for `seconds` and summarise the
+/// movement (turn left/right/up/down, wheel, presses).
+///
+/// The knob arrives as consumer-control key codes on the keyboard's
+/// "Consumer Control" node, so every node of the device is listened to at once
+/// and only the consumer codes are classified as knob input. When the nodes
+/// are not readable we fall back to capturing the raw HID stream.
 #[tauri::command]
 pub fn knob_events(seconds: Option<u32>) -> Result<serde_json::Value, String> {
     let secs = seconds.unwrap_or(5).clamp(1, 60);
@@ -324,6 +368,8 @@ pub struct AppState {
     /// How many frames the last push carried — used to extrapolate the
     /// transfer time of a cartridge before it is built.
     pub last_push_frames: std::sync::atomic::AtomicU64,
+    /// True once the live knob subscription thread has been started.
+    pub knob_watch_started: std::sync::atomic::AtomicBool,
 }
 
 #[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]

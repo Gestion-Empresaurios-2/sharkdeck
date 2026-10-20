@@ -220,3 +220,10 @@ export const opcodeProbe = (ops?: number[]) =>
   invoke<{ rows: OpcodeRow[] }>('opcode_probe', { ops });
 export const opcodeFull = (op: number) =>
   invoke<{ op: number; hex: string }>('opcode_full', { op });
+
+/** A live knob detent forwarded by the backend (turn left / turn right / press). */
+export type KnobAction = { dir: 'left' | 'right' | 'press'; code: number };
+
+/** Start listening to the keyboard's native knob (idempotent). */
+export const knobSubscribe = () =>
+  invoke<{ nodes: string[]; active: boolean }>('knob_subscribe');

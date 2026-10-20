@@ -170,6 +170,13 @@ export const RE_ITEMS: ReItem[] = [
     note: '3 profiles × base + Fn layers, 50 macros, options, lighting — verified on the board.',
   },
   {
+    id: 'nos-knob-drive',
+    track: 'Native OS',
+    title: 'The knob drives the keyboard screens',
+    status: 'done',
+    note: 'Consumer-control detents (114/115/113) stream from evdev into the app: turn = change screen, press = push it.',
+  },
+  {
     id: 'no-denylist',
     track: 'Native OS',
     title: 'Hard denylist for destructive opcodes',

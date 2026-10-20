@@ -50,6 +50,7 @@ pub fn run() {
             commands::opcode_full,
             commands::knob_devices,
             commands::knob_events,
+            commands::knob_subscribe,
             commands::pick_open_image,
             commands::pick_open_json,
             commands::pick_save_file,

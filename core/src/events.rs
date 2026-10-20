@@ -158,6 +158,82 @@ pub fn read_events(path: &str, seconds: u64) -> Result<Vec<RawEvent>, String> {
     Ok(out)
 }
 
+/// A decoded knob action.
+#[derive(Clone, Debug, serde::Serialize)]
+pub struct KnobAction {
+    /// `"left"`, `"right"` or `"press"`.
+    pub dir: String,
+    /// The raw evdev key code (114 / 115 / 113).
+    pub code: u16,
+}
+
+/// Classify a raw event into a knob action. Only the three consumer-control
+/// detents the firmware emits for the knob are recognised; ordinary typing is
+/// ignored.
+pub fn classify_knob(ev: &RawEvent) -> Option<KnobAction> {
+    if ev.kind != 0x01 || ev.value == 0 {
+        return None; // EV_KEY only, and only the "pressed" edge
+    }
+    let dir = match ev.code {
+        KNOB_TURN_UP => "right",
+        KNOB_TURN_DOWN => "left",
+        KNOB_PRESS => "press",
+        _ => return None,
+    };
+    Some(KnobAction {
+        dir: dir.to_string(),
+        code: ev.code,
+    })
+}
+
+/// Watch every node for knob actions and call `on_action` for each one.
+/// Runs forever (the keyboard can emit detents at any time).
+pub fn watch_knob<F>(paths: Vec<String>, mut on_action: F)
+where
+    F: FnMut(KnobAction) + Send + 'static,
+{
+    use std::sync::mpsc;
+    let (tx, rx) = mpsc::channel::<KnobAction>();
+    for p in paths {
+        let tx = tx.clone();
+        std::thread::spawn(move || {
+            let mut f = match open_nonblocking(&p) {
+                Ok(f) => f,
+                Err(_) => return,
+            };
+            let mut buf = [0u8; 24 * 64];
+            loop {
+                match f.read(&mut buf) {
+                    Ok(0) => {
+                        std::thread::sleep(Duration::from_millis(50));
+                    }
+                    Ok(n) => {
+                        for chunk in buf[..n].chunks_exact(24) {
+                            let kind = u16::from_le_bytes([chunk[16], chunk[17]]);
+                            let code = u16::from_le_bytes([chunk[18], chunk[19]]);
+                            let value =
+                                i32::from_le_bytes([chunk[20], chunk[21], chunk[22], chunk[23]]);
+                            if let Some(a) = classify_knob(&RawEvent { kind, code, value }) {
+                                let _ = tx.send(a);
+                            }
+                        }
+                    }
+                    Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                        std::thread::sleep(Duration::from_millis(10));
+                    }
+                    Err(_) => {
+                        std::thread::sleep(Duration::from_millis(250));
+                    }
+                }
+            }
+        });
+    }
+    drop(tx);
+    while let Ok(action) = rx.recv() {
+        on_action(action);
+    }
+}
+
 /// Read from several nodes at the same time, tagging every event with the
 /// node it came from. Nodes that cannot be opened are skipped silently.
 pub fn read_events_multi(paths: &[String], seconds: u64) -> Vec<(String, RawEvent)> {
@@ -288,28 +364,6 @@ pub fn summarise(events: &[RawEvent]) -> KnobSummary {
                         }
                     }
                     _ => {}
-                }
-            }
-            (2, 6) => s.wheel -= e.value,
-            (2, 0) => {
-                if e.value < 0 {
-                    s.left += -e.value;
-                } else {
-                    s.right += e.value;
-                }
-            }
-            (2, 1) => {
-                if e.value < 0 {
-                    s.up += -e.value;
-                } else {
-                    s.down += e.value;
-                }
-            }
-            (2, 2) => {
-                if e.value < 0 {
-                    s.left += -e.value;
-                } else {
-                    s.right += e.value;
                 }
             }
             _ => {}

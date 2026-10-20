@@ -37,6 +37,7 @@ export interface Comp {
   speed?: number;  // anim px/frame or shift
   value?: number;  // meter 0..1
   bars?: number;   // eq bars
+  batteryStyle?: 'segments' | 'ios'; // battery glyph style
 }
 
 export interface Template {
@@ -207,6 +208,74 @@ function hex(c: string, fallback = '#ffffff'): [number, number, number] {
 
 function withAlpha(c: [number, number, number], a: number) {
   return `rgba(${c[0]},${c[1]},${c[2]},${a})`;
+}
+
+/** Rounded-rect path (webview-safe, no ctx.roundRect dependency). */
+function rrPath(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+  const rad = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + rad, y);
+  ctx.lineTo(x + w - rad, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + rad);
+  ctx.lineTo(x + w, y + h - rad);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - rad, y + h);
+  ctx.lineTo(x + rad, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - rad);
+  ctx.lineTo(x, y + rad);
+  ctx.quadraticCurveTo(x, y, x + rad, y);
+  ctx.closePath();
+}
+
+/**
+ * Battery glyphs.
+ *  'segments' — classic cell: outlined body with vertical segment bars.
+ *  'ios'      — iOS / HyperOS style: rounded body with a smooth fill + nub.
+ * `pct` is 0..1.
+ */
+function drawBattery(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  bw: number,
+  bh: number,
+  pct: number,
+  fg: [number, number, number],
+  style: 'segments' | 'ios',
+) {
+  const p = Math.max(0, Math.min(1, pct));
+  // terminal nub
+  ctx.fillStyle = withAlpha(fg, 0.85);
+  ctx.fillRect(x + bw + 1, y + Math.floor(bh / 3), 2, Math.max(2, Math.floor(bh / 3)));
+
+  if (style === 'ios') {
+    ctx.strokeStyle = withAlpha(fg, 0.9);
+    ctx.lineWidth = 1;
+    rrPath(ctx, x + 0.5, y + 0.5, bw - 1, bh - 1, Math.max(2, Math.floor(bh / 4)));
+    ctx.stroke();
+    if (p > 0.004) {
+      const iw = Math.max(2, Math.round((bw - 5) * p));
+      ctx.fillStyle = withAlpha(fg, 0.95);
+      rrPath(ctx, x + 2, y + 2, iw, bh - 4, 1);
+      ctx.fill();
+    }
+    return;
+  }
+
+  // classic: body outline + vertical segment bars
+  ctx.strokeStyle = withAlpha(fg, 0.85);
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x + 0.5, y + 0.5, bw - 1, bh - 1);
+  const segs = 5;
+  const pad = 3;
+  const gap = 1;
+  const inner = bw - pad * 2;
+  const sw = Math.max(1, Math.floor((inner - gap * (segs - 1)) / segs));
+  const filled = Math.round(p * segs);
+  for (let i = 0; i < segs; i++) {
+    const sx = x + pad + i * (sw + gap);
+    ctx.fillStyle = withAlpha(fg, i < filled ? 0.95 : 0.18);
+    ctx.fillRect(sx, y + pad, sw, bh - pad * 2);
+  }
 }
 
 /** Deterministic pseudo random per seed (stable across frames). */
@@ -456,16 +525,16 @@ export function renderTemplate(t: Template, w: number, h: number, frame: number)
       // ------------------------------------------------- battery gauge
       case 'battery': {
         const bw = Math.max(20, Math.floor(w * 0.14));
-        const bh = Math.max(10, Math.floor(h * 0.11));
+        const bh = Math.max(11, Math.floor(h * 0.12));
         const x = 7;
         const y = 7;
         const pct = Math.max(0, Math.min(1, c.value ?? 0.82));
-        ctx.strokeStyle = withAlpha(fg, 0.85);
-        ctx.lineWidth = 1;
-        ctx.strokeRect(x + 0.5, y + 0.5, bw, bh);
-        ctx.fillRect(x + bw + 1, y + bh / 3, 2, bh / 3);
+        drawBattery(ctx, x, y, bw, bh, pct, fg, c.batteryStyle ?? 'segments');
+        ctx.font = `${Math.floor(h * 0.1)}px ${MONO}`;
+        ctx.textAlign = 'left';
         ctx.fillStyle = withAlpha(fg, 0.9);
-        ctx.fillRect(x + 2, y + 2, Math.max(1, (bw - 4) * pct), bh - 4);
+        ctx.fillText(`${Math.round(pct * 100)}%`, x + bw + 8, y + bh - 1);
+        ctx.textAlign = 'center';
         break;
       }
       // ------------------------------------------------- progress ring
@@ -499,20 +568,26 @@ export function renderTemplate(t: Template, w: number, h: number, frame: number)
         const info = live.info;
         const pct = info?.battery ?? null;
         const bw = Math.max(20, Math.floor(w * 0.15));
-        const bh = Math.max(10, Math.floor(h * 0.11));
+        const bh = Math.max(11, Math.floor(h * 0.12));
         const x = 7;
         const y = 7;
-        ctx.strokeStyle = withAlpha(fg, 0.85);
-        ctx.lineWidth = 1;
-        ctx.strokeRect(x + 0.5, y + 0.5, bw, bh);
-        ctx.fillRect(x + bw + 1, y + bh / 3, 2, bh / 3);
         if (pct !== null) {
-          ctx.fillStyle = withAlpha(fg, 0.92);
-          ctx.fillRect(x + 2, y + 2, Math.max(1, ((bw - 4) * pct) / 100), bh - 4);
-          ctx.font = `${Math.floor(h * 0.11)}px ${MONO}`;
+          drawBattery(ctx, x, y, bw, bh, pct / 100, fg, c.batteryStyle ?? 'segments');
+          ctx.font = `${Math.floor(h * 0.1)}px ${MONO}`;
           ctx.textAlign = 'left';
           ctx.fillStyle = withAlpha(fg, 0.95);
-          ctx.fillText(`${pct}%${info?.charging ? '+' : ''}`, x + bw + 7, y + bh);
+          ctx.fillText(`${pct}%${info?.charging ? '+' : ''}`, x + bw + 8, y + bh - 1);
+          ctx.textAlign = 'center';
+        } else {
+          // no host battery: outline only, honest
+          ctx.strokeStyle = withAlpha(fg, 0.4);
+          ctx.lineWidth = 1;
+          ctx.strokeRect(x + 0.5, y + 0.5, bw - 1, bh - 1);
+          ctx.fillStyle = withAlpha(fg, 0.4);
+          ctx.fillRect(x + bw + 1, y + Math.floor(bh / 3), 2, Math.max(2, Math.floor(bh / 3)));
+          ctx.font = `${Math.floor(h * 0.09)}px ${MONO}`;
+          ctx.textAlign = 'left';
+          ctx.fillText('n/a', x + bw + 8, y + bh - 1);
           ctx.textAlign = 'center';
         }
         break;

@@ -87,7 +87,8 @@
     if (kind === 'rain') base.speed = 6;
     if (kind === 'eq') base.bars = 16;
     if (kind === 'meter') { base.text = 'Label'; base.value = 0.6; }
-    if (kind === 'battery') base.value = 0.8;
+    if (kind === 'battery') { base.value = 0.8; base.batteryStyle = 'segments'; }
+    if (kind === 'hostbatt') base.batteryStyle = 'segments';
     if (kind === 'ring') base.value = 0.6;
     if (kind === 'steps') { base.text = '8420'; }
     if (kind === 'watch') base.fg = '#e8eaf0';
@@ -248,6 +249,18 @@
             {#if c.kind === 'eq'}
               <label class="numlab">bars <input class="num" type="number" bind:value={c.bars} oninput={() => upd(i, { bars: c.bars ?? 16 })} /></label>
             {/if}
+            {#if c.kind === 'battery' || c.kind === 'hostbatt'}
+              <span class="chiprow">
+                <button class="chip" class:sel={(c.batteryStyle ?? 'segments') === 'segments'} onclick={() => upd(i, { batteryStyle: 'segments' })}>Segments</button>
+                <button class="chip" class:sel={(c.batteryStyle ?? 'segments') === 'ios'} onclick={() => upd(i, { batteryStyle: 'ios' })}>iOS</button>
+              </span>
+            {/if}
+            {#if c.kind === 'battery'}
+              <label class="numlab">level
+                <input class="num" type="number" min="0" max="100" value={Math.round((c.value ?? 0.82) * 100)} oninput={(e) => upd(i, { value: (e.currentTarget.valueAsNumber || 0) / 100 })} />
+                %
+              </label>
+            {/if}
             {#if c.kind === 'meter'}
               <input class="num" type="number" min="0" max="1" step="0.05" bind:value={c.value} oninput={() => upd(i, { value: c.value ?? 0.6 })} />
             {/if}
@@ -399,6 +412,10 @@
   }
   .icon-btn:hover { background: var(--hover); color: var(--text); }
   .icon-btn.danger:hover { color: var(--err); border-color: var(--err); }
+  .chiprow {
+    display: inline-flex;
+    gap: 4px;
+  }
   .geom { margin-top: 8px; }
   .slot-sel {
     padding: 7px 10px;

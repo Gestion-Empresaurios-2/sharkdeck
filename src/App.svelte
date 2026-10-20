@@ -40,9 +40,8 @@
   <aside>
     <div class="brand">
       <div class="brand-tile">
-        <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
-          <path d="M12.6 2.4 C 9 6 7.4 10.6 7.6 15.2 L 7.6 21.6 C 11.6 20.2 14.6 17.2 16.2 13.4 C 17.2 10.8 17 8 15.4 5.4 L 13 2.4 Z" fill="#7a7ff0" opacity="0.95"/>
-          <path d="M7.6 15.2 L 7.6 21.6 C 9.2 21.06 10.7 20.2 12 19.2 L 9.6 15.2 Z" fill="#5a5fd6"/>
+        <svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true">
+          <path d="M12 1.6 C 10 6 6 12 2.6 19.6 C 7 20.4 15 20.2 20.4 18.4 C 18.6 12.4 16.2 6.2 12 1.6 Z" fill="#6b76fa"/>
         </svg>
       </div>
       <div>
@@ -140,9 +139,9 @@
     border-bottom: 1px solid var(--border);
   }
   .brand-tile {
-    width: 40px;
-    height: 40px;
-    border-radius: 10px;
+    width: 46px;
+    height: 46px;
+    border-radius: 12px;
     background: #20253a;
     display: grid;
     place-items: center;

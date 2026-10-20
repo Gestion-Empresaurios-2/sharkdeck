@@ -31,7 +31,7 @@
 
   // clock controls
   let clockFrames = $state(15);
-  let clockSeconds = $state(true);
+  let clockSeconds = $state(false);
   let clockFg = $state('#E6E9F2');
   let clockBg = $state('#0A0C12');
   let clockLive = $state(false);
@@ -76,10 +76,15 @@
     // to real time well before the window runs out. Every frame carries an
     // absolute timestamp, so a re-push corrects any drift instead of stacking
     // it up, and the schedule is aligned to whole wall-clock seconds.
-    const REFRESH_MS = 10000;
+    // Traffic matters: a 240x135 frame is ~1158 feature reports, so a
+    // seconds-accurate clock costs ~1 frame/s of USB traffic and can starve
+    // the keyboard's own key reports. Without seconds we re-anchor once a
+    // minute and stay out of the way.
+    const REFRESH_MS = clockSeconds ? 10000 : 60000;
     const tick = () => {
       const now = Date.now();
-      const next = Math.ceil((now + 250) / REFRESH_MS) * REFRESH_MS;
+      const refresh = clockSeconds ? 10000 : 60000;
+      const next = Math.ceil((now + 250) / refresh) * refresh;
       timer = window.setTimeout(async () => {
         if (clockLive && connected() && !busy) await clockPush(true);
         tick();

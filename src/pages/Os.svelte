@@ -65,6 +65,10 @@
       .catch(() => (knobNodes = []));
     const unlisten = listen<api.KnobAction>('sharkdeck://knob', (e) => {
       const dir = e.payload?.dir;
+      if (dir === 'typing') {
+        typingUntil = Date.now() + 1500;
+        return;
+      }
       if (!knobControl) return;
       if (dir === 'left') {
         cycle(-1);
@@ -162,10 +166,17 @@
   let dwell = $state(100);
   let knobControl = $state(false);
   let knobPush = $state(false);
+  // While the user is typing we must not talk to the keyboard: a screen push
+  // saturates its USB endpoint and the keystrokes get dropped.
+  let typingUntil = 0;
   let knobNodes = $state<string[]>([]);
   async function pushCarousel() {
     if (!store.device) return toast('err', 'No device connected');
     const now = Date.now();
+    if (now < typingUntil) {
+      if (!silent) toast('info', 'Paused while you are typing — try again in a moment');
+      return;
+    }
     if (now - lastPushAt < PUSH_COOLDOWN_MS) {
       if (!silent) toast('info', 'Please wait a moment before pushing again');
       return;
@@ -281,7 +292,7 @@
     if (!keepLive) return;
     const id = setInterval(() => {
       if (store.device && !busy) void pushAnimation(true);
-    }, 25000);
+    }, 55000);
     return () => clearInterval(id);
   });
 
@@ -317,7 +328,7 @@
     lastPushAt = now;
     busy = true;
     try {
-      const frames = osFrames(osState.page, W, H, 30);
+      const frames = osFrames(osState.page, W, H, 3);
       await api.screenAnimPush(frames, W, H, cfg?.order);
       if (!silent) toast('ok', 'Animated OS page pushed (30 live frames)');
     } catch (e) {

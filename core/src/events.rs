@@ -192,6 +192,13 @@ pub fn classify_knob(ev: &RawEvent) -> Option<KnobAction> {
     })
 }
 
+/// True when the event is an ordinary key press (typing) rather than a knob
+/// detent. Used to pause heavy screen pushes while the user is typing, so
+/// the keyboard's own input reports are never starved by our transfers.
+pub fn classify_activity(ev: &RawEvent) -> bool {
+    ev.kind == 0x01 && ev.value == 1
+}
+
 /// Watch every node for knob actions and call `on_action` for each one.
 /// Runs forever (the keyboard can emit detents at any time).
 pub fn watch_knob<F>(paths: Vec<String>, mut on_action: F)
@@ -203,32 +210,41 @@ where
     for p in paths {
         let tx = tx.clone();
         std::thread::spawn(move || {
-            let mut f = match open_nonblocking(&p) {
-                Ok(f) => f,
-                Err(_) => return,
-            };
             let mut buf = [0u8; 24 * 64];
             loop {
-                match f.read(&mut buf) {
-                    Ok(0) => {
-                        std::thread::sleep(Duration::from_millis(50));
+                // Re-open the node whenever it goes away (the keyboard
+                // re-enumerates after a factory reset or a replug, which
+                // invalidates the old file descriptor).
+                let mut f = match open_nonblocking(&p) {
+                    Ok(f) => f,
+                    Err(_) => {
+                        std::thread::sleep(Duration::from_millis(500));
+                        continue;
                     }
-                    Ok(n) => {
-                        for chunk in buf[..n].chunks_exact(24) {
-                            let kind = u16::from_le_bytes([chunk[16], chunk[17]]);
-                            let code = u16::from_le_bytes([chunk[18], chunk[19]]);
-                            let value =
-                                i32::from_le_bytes([chunk[20], chunk[21], chunk[22], chunk[23]]);
-                            if let Some(a) = classify_knob(&RawEvent { kind, code, value }) {
-                                let _ = tx.send(a);
+                };
+                loop {
+                    match f.read(&mut buf) {
+                        Ok(0) => {
+                            std::thread::sleep(Duration::from_millis(50));
+                        }
+                        Ok(n) => {
+                            for chunk in buf[..n].chunks_exact(24) {
+                                let kind = u16::from_le_bytes([chunk[16], chunk[17]]);
+                                let code = u16::from_le_bytes([chunk[18], chunk[19]]);
+                                let value =
+                                    i32::from_le_bytes([chunk[20], chunk[21], chunk[22], chunk[23]]);
+                                if let Some(a) = classify_knob(&RawEvent { kind, code, value }) {
+                                    let _ = tx.send(a);
+                                }
                             }
                         }
-                    }
-                    Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                        std::thread::sleep(Duration::from_millis(10));
-                    }
-                    Err(_) => {
-                        std::thread::sleep(Duration::from_millis(250));
+                        Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                            std::thread::sleep(Duration::from_millis(10));
+                        }
+                        Err(_) => {
+                            std::thread::sleep(Duration::from_millis(300));
+                            break; // reopen the node
+                        }
                     }
                 }
             }

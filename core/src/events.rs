@@ -252,15 +252,44 @@ pub fn summarise(events: &[RawEvent]) -> KnobSummary {
                 }
             }
             (1, code) => {
+                // Mouse buttons (0x110..0x117) are the only generic presses;
+                // ordinary typing is ignored so it is never counted as a knob.
                 if e.value == 1 && code >= 0x110 && code <= 0x117 {
                     s.presses += 1;
                 }
-                let l = key_label(code);
+            }
+            (2, code) => {
+                let l = rel_label(code);
                 if !s.axes.iter().any(|a| a == l) {
                     s.axes.push(l.to_string());
                 }
+                match code {
+                    8 => s.wheel += e.value,
+                    6 => s.wheel -= e.value,
+                    0 => {
+                        if e.value < 0 {
+                            s.left += -e.value;
+                        } else {
+                            s.right += e.value;
+                        }
+                    }
+                    1 => {
+                        if e.value < 0 {
+                            s.up += -e.value;
+                        } else {
+                            s.down += e.value;
+                        }
+                    }
+                    2 => {
+                        if e.value < 0 {
+                            s.left += -e.value;
+                        } else {
+                            s.right += e.value;
+                        }
+                    }
+                    _ => {}
+                }
             }
-            (2, 8) => s.wheel += e.value,
             (2, 6) => s.wheel -= e.value,
             (2, 0) => {
                 if e.value < 0 {

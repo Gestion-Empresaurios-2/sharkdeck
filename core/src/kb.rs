@@ -224,6 +224,31 @@ impl Keyboard {
     }
 
     /// Raw write without read-back (SET, bit7 checksum).
+    /// Vendor **factory reset** (opcode 0x02, ~4 s on the wire).
+    ///
+    /// This is intentionally NOT routed through `send()`: 0x02 is on the
+    /// denylist, so the generic path can never emit it. It exists only for
+    /// the explicit, user-consented factory-reset flow (CLI `factory-reset`
+    /// and the app's "Reset keyboard to factory settings" action, both of
+    /// which require an explicit confirmation).
+    ///
+    /// It wipes the keymap, macros, lighting and switch settings on the
+    /// keyboard — the host-side settings backup (see `settings_backup`) is
+    /// the only way to restore them.
+    pub fn factory_reset(&self) -> Result<(), String> {
+        let req = cmd_bit7(0x02, &[]);
+        let mut wire = [0u8; FEATURE_LEN];
+        wire[1..].copy_from_slice(&req);
+        self.api.with(&self.path, |dev| {
+            dev.send_feature_report(&wire).map_err(|e| e.to_string())?;
+            Ok(())
+        })?;
+        // The firmware takes ~4 s to wipe and reboot; give it room, then
+        // re-open the device so the next command talks to a fresh unit.
+        std::thread::sleep(std::time::Duration::from_millis(4500));
+        Ok(())
+    }
+
     pub fn send(&self, payload: Payload) -> Result<(), String> {
         Self::assert_safe_op(payload[0])?;
         let mut wire = [0u8; FEATURE_LEN];

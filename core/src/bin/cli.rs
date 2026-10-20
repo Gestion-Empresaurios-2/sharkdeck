@@ -126,6 +126,7 @@ fn run(cmd: &str, args: &[String]) -> i32 {
             else { Err(format!("readback != written ({:?} != {:?})", back.0, mute.0)) }
         }),
         "scan" => cmd_scan(),
+        "factory-reset" => cmd_factory_reset(args),
         "events" => cmd_events(args),
         // hidden debug helper: per-key RGB geometry, no device access
         "perkey-dry" => cmd_perkey_dry(),
@@ -894,6 +895,24 @@ fn cmd_events(args: &[String]) -> i32 {
         println!("no event interfaces found");
     }
     0
+}
+
+fn cmd_factory_reset(args: &[String]) -> i32 {
+    // Vendor factory reset (0x02). Wipes the keymap, macros, lighting and
+    // switch settings on the keyboard — only with an explicit --yes.
+    if !args.iter().any(|a| a == "--yes" || a == "-y") {
+        eprintln!(
+            "factory-reset will ERASE the keyboard's keymap, macros, lighting and\n\
+             switch settings (it cannot be undone; only the host-side settings\n\
+             backup can restore them).\n\
+             Re-run with --yes if that is what you want."
+        );
+        return 2;
+    }
+    with_kb(|kb| {
+        kb.factory_reset()?;
+        Ok("factory reset sent — the keyboard rebooted with factory settings\n(plug it back in if it does not re-enumerate)".into())
+    })
 }
 
 fn cmd_scan() -> i32 {

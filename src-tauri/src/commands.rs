@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex};
 /// Read the keyboard's battery level, if this firmware exposes one.
 /// Returns None when no documented/empirical opcode answers.
 #[tauri::command]
-pub fn battery_probe(app: State<AppState>) -> Result<Option<u8>, String> {
+pub async fn battery_probe(app: State<'_, AppState>) -> Result<Option<u8>, String> {
     let kb = kb_of(&app)?;
     kb.battery_probe()
 }
@@ -22,7 +22,7 @@ pub fn battery_probe(app: State<AppState>) -> Result<Option<u8>, String> {
 /// replayed its previous answer (unimplemented opcode), while a reply that
 /// starts with the opcode was really produced by the dispatcher.
 #[tauri::command]
-pub fn opcode_probe(ops: Option<Vec<u8>>) -> Result<serde_json::Value, String> {
+pub async fn opcode_probe(ops: Option<Vec<u8>>) -> Result<serde_json::Value, String> {
     let api = sharkdeck_core::hid::ApiBox::new().map_err(|e| e.to_string())?;
     let api: sharkdeck_core::hid::SharedApi = Arc::new(api);
     let Some(kb) = Keyboard::find_in(&api)? else {
@@ -79,7 +79,7 @@ pub fn opcode_probe(ops: Option<Vec<u8>>) -> Result<serde_json::Value, String> {
 
 /// Full 64-byte reply of a single read-only opcode, hex encoded.
 #[tauri::command]
-pub fn opcode_full(op: u8) -> Result<serde_json::Value, String> {
+pub async fn opcode_full(op: u8) -> Result<serde_json::Value, String> {
     let api = sharkdeck_core::hid::ApiBox::new().map_err(|e| e.to_string())?;
     let api: sharkdeck_core::hid::SharedApi = Arc::new(api);
     let Some(kb) = Keyboard::find_in(&api)? else {
@@ -125,7 +125,7 @@ pub fn knob_devices() -> Result<serde_json::Value, String> {
 ///
 /// Calling it twice is safe — the subscription is only started once.
 #[tauri::command]
-pub fn knob_subscribe(app: tauri::AppHandle, state: State<AppState>) -> Result<serde_json::Value, String> {
+pub async fn knob_subscribe(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<serde_json::Value, String> {
     use std::sync::atomic::Ordering;
     use tauri::Emitter;
 
@@ -164,7 +164,7 @@ pub fn knob_subscribe(app: tauri::AppHandle, state: State<AppState>) -> Result<s
 /// and only the consumer codes are classified as knob input. When the nodes
 /// are not readable we fall back to capturing the raw HID stream.
 #[tauri::command]
-pub fn knob_events(seconds: Option<u32>) -> Result<serde_json::Value, String> {
+pub async fn knob_events(seconds: Option<u32>) -> Result<serde_json::Value, String> {
     let secs = seconds.unwrap_or(5).clamp(1, 60);
     let devices = sharkdeck_core::events::list_devices();
     // The knob is reported as consumer-control key codes on the keyboard's
@@ -271,7 +271,7 @@ fn capture_hidraw(secs: u64) -> Vec<String> {
 /// Live desk + device telemetry for on-panel widgets (battery, CPU, RAM,
 /// uptime, host name) plus the keyboard's current state.
 #[tauri::command]
-pub fn host_info(app: State<AppState>) -> Result<serde_json::Value, String> {
+pub async fn host_info(app: State<'_, AppState>) -> Result<serde_json::Value, String> {
     // Host battery
     let mut battery: Option<u8> = None;
     let mut charging = false;
@@ -435,7 +435,7 @@ pub fn load_config(path: Option<std::path::PathBuf>) -> AppConfig {
 }
 
 #[tauri::command]
-pub fn probe(app: tauri::State<'_, AppState>) -> Result<Option<serde_json::Value>, String> {
+pub async fn probe(app: tauri::State<'_, AppState>) -> Result<Option<serde_json::Value>, String> {
     // Cold-start races (webview booting while hidraw settles) can make the
     // first enumeration come up empty; retry briefly before giving up.
     let mut fresh = Keyboard::open()?;
@@ -480,49 +480,49 @@ pub fn probe(app: tauri::State<'_, AppState>) -> Result<Option<serde_json::Value
 }
 
 #[tauri::command]
-pub fn disconnect(app: tauri::State<'_, AppState>) -> Result<(), String> {
+pub async fn disconnect(app: tauri::State<'_, AppState>) -> Result<(), String> {
     *app.kb.lock().unwrap() = None;
     Ok(())
 }
 
 #[tauri::command]
-pub fn light_get(app: tauri::State<'_, AppState>, side: bool) -> Result<LightingState, String> {
+pub async fn light_get(app: tauri::State<'_, AppState>, side: bool) -> Result<LightingState, String> {
     kb_of(&app)?.light(side)
 }
 
 #[tauri::command]
-pub fn light_set(app: tauri::State<'_, AppState>, side: bool, state: LightingState) -> Result<(), String> {
+pub async fn light_set(app: tauri::State<'_, AppState>, side: bool, state: LightingState) -> Result<(), String> {
     let kb = kb_of(&app)?;
     kb.light_set(side, state)
 }
 
 #[tauri::command]
-pub fn leds_on(app: tauri::State<'_, AppState>) -> Result<KbOptions, String> {
+pub async fn leds_on(app: tauri::State<'_, AppState>) -> Result<KbOptions, String> {
     kb_of(&app)?.leds_on()
 }
 
 #[tauri::command]
-pub fn options_get(app: tauri::State<'_, AppState>) -> Result<KbOptions, String> {
+pub async fn options_get(app: tauri::State<'_, AppState>) -> Result<KbOptions, String> {
     kb_of(&app)?.options_get()
 }
 
 #[tauri::command]
-pub fn options_set(app: tauri::State<'_, AppState>, options: KbOptions) -> Result<(), String> {
+pub async fn options_set(app: tauri::State<'_, AppState>, options: KbOptions) -> Result<(), String> {
     kb_of(&app)?.options_set(options)
 }
 
 #[tauri::command]
-pub fn profile_get(app: tauri::State<'_, AppState>) -> Result<u8, String> {
+pub async fn profile_get(app: tauri::State<'_, AppState>) -> Result<u8, String> {
     kb_of(&app)?.profile_get()
 }
 
 #[tauri::command]
-pub fn profile_set(app: tauri::State<'_, AppState>, index: u8) -> Result<(), String> {
+pub async fn profile_set(app: tauri::State<'_, AppState>, index: u8) -> Result<(), String> {
     kb_of(&app)?.profile_set(index)
 }
 
 #[tauri::command]
-pub fn keymap_read(
+pub async fn keymap_read(
     app: tauri::State<'_, AppState>,
     profile: u8,
     fn_layer: bool,
@@ -537,7 +537,7 @@ pub fn keymap_read(
 }
 
 #[tauri::command]
-pub fn keymap_write(
+pub async fn keymap_write(
     app: tauri::State<'_, AppState>,
     profile: u8,
     fn_layer: bool,
@@ -568,12 +568,12 @@ pub fn keymap_write(
 }
 
 #[tauri::command]
-pub fn macro_read(app: tauri::State<'_, AppState>, slot: u8) -> Result<Vec<u8>, String> {
+pub async fn macro_read(app: tauri::State<'_, AppState>, slot: u8) -> Result<Vec<u8>, String> {
     Ok(kb_of(&app)?.macro_read(slot)?.to_vec())
 }
 
 #[tauri::command]
-pub fn macro_write(app: tauri::State<'_, AppState>, slot: u8, blob: Vec<u8>) -> Result<(), String> {
+pub async fn macro_write(app: tauri::State<'_, AppState>, slot: u8, blob: Vec<u8>) -> Result<(), String> {
     let mut b = [0u8; 256];
     if blob.len() > 256 {
         return Err("macro too long".into());
@@ -583,7 +583,7 @@ pub fn macro_write(app: tauri::State<'_, AppState>, slot: u8, blob: Vec<u8>) -> 
 }
 
 #[tauri::command]
-pub fn display_params(app: tauri::State<'_, AppState>) -> Result<serde_json::Value, String> {
+pub async fn display_params(app: tauri::State<'_, AppState>) -> Result<serde_json::Value, String> {
     match kb_of(&app)?.display_params(8) {
         Ok(Some((w, h, b))) => Ok(serde_json::json!({"width": w, "height": h, "brightness": b})),
         Ok(None) => Ok(serde_json::json!({"width": null, "height": null})),
@@ -673,7 +673,7 @@ pub fn perkey_grid() -> Result<serde_json::Value, String> {
 /// nothing is written to the device. A real upload is a FLASH write limited
 /// to 2 per 10 s by the limiter inside `Keyboard::set_userpic`.
 #[tauri::command]
-pub fn perkey_push(
+pub async fn perkey_push(
     app: tauri::State<'_, AppState>,
     cells: Vec<[u8; 3]>,
     dry_run: bool,
@@ -726,7 +726,7 @@ pub fn perkey_push(
 /// Upload a frame prepared in the frontend canvas. `rgba_b64` holds 4 bytes
 /// per pixel in row-major order.
 #[tauri::command]
-pub fn screen_push(
+pub async fn screen_push(
     app: tauri::State<'_, AppState>,
     rgba_b64: String,
     width: u32,
@@ -771,7 +771,7 @@ pub fn screen_push(
 
 /// File import: returns frames (base64 rgb565, delays, preview base64 rgba).
 #[tauri::command]
-pub fn screen_import(
+pub async fn screen_import(
     app: tauri::State<'_, AppState>,
     path: String,
     mode: scr::ContentMode,
@@ -831,7 +831,7 @@ pub fn screen_import(
 
 /// Upload a builtin pattern directly (wizard can override panel size).
 #[tauri::command]
-pub fn screen_pattern(
+pub async fn screen_pattern(
     app: tauri::State<'_, AppState>,
     pattern: String,
     slot: Option<u8>,
@@ -867,7 +867,7 @@ pub fn screen_pattern(
 
 /// Upload a builtin clock animation (n frames each 1s).
 #[tauri::command]
-pub fn screen_clock(
+pub async fn screen_clock(
     app: tauri::State<'_, AppState>,
     frames: Option<usize>,
     with_seconds: bool,
@@ -915,7 +915,7 @@ pub struct AnimFrame {
 }
 
 #[tauri::command]
-pub fn screen_anim_push(
+pub async fn screen_anim_push(
     app: tauri::State<'_, AppState>,
     frames: Vec<AnimFrame>,
     width: u32,
@@ -1060,7 +1060,7 @@ pub fn pick_open_json(app_handle: tauri::AppHandle) -> Result<Option<String>, St
 }
 
 #[tauri::command]
-pub fn keymap_backup(app: tauri::State<'_, AppState>, path: String, profile: u8) -> Result<(), String> {
+pub async fn keymap_backup(app: tauri::State<'_, AppState>, path: String, profile: u8) -> Result<(), String> {
     let kb = kb_of(&app)?;
     let base = kb.keymap_layer(profile)?;
     let fns = kb.fn_layer(profile)?;
@@ -1083,7 +1083,7 @@ pub fn keymap_backup(app: tauri::State<'_, AppState>, path: String, profile: u8)
 /// readable is captured here: the keymap + Fn layer of all three profiles,
 /// all 50 macro slots, the option bytes and both lighting states.
 #[tauri::command]
-pub fn settings_backup(app: tauri::State<'_, AppState>, path: String) -> Result<String, String> {
+pub async fn settings_backup(app: tauri::State<'_, AppState>, path: String) -> Result<String, String> {
     let kb = kb_of(&app)?;
     let info = kb.info()?;
     let mut profiles = Vec::new();
@@ -1127,7 +1127,7 @@ pub fn settings_backup(app: tauri::State<'_, AppState>, path: String) -> Result<
 /// Restore a settings snapshot. Only slots that actually differ are written,
 /// and every keymap write is verified by read-back.
 #[tauri::command]
-pub fn settings_restore(app: tauri::State<'_, AppState>, path: String) -> Result<String, String> {
+pub async fn settings_restore(app: tauri::State<'_, AppState>, path: String) -> Result<String, String> {
     let kb = kb_of(&app)?;
     let doc: serde_json::Value = serde_json::from_str(
         &fs::read_to_string(&path).map_err(|e| e.to_string())?,
@@ -1249,7 +1249,7 @@ fn base64_decode(s: &str) -> Result<Vec<u8>, String> {
 }
 
 #[tauri::command]
-pub fn keymap_restore(app: tauri::State<'_, AppState>, path: String) -> Result<usize, String> {
+pub async fn keymap_restore(app: tauri::State<'_, AppState>, path: String) -> Result<usize, String> {
     let kb = kb_of(&app)?;
     let doc: serde_json::Value = serde_json::from_str(
         &fs::read_to_string(&path).map_err(|e| e.to_string())?,

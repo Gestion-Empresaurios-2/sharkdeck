@@ -26,6 +26,12 @@
   let cfg: AppConfig | null = $state(null);
   let slot = $state(0);
   let busy = $state(false);
+  // Minimum gap between two pushes. The keyboard is a slow, exclusive
+  // device: pushing back-to-back floods it with handshakes and can make it
+  // reboot, so every push path goes through this guard.
+  const PUSH_COOLDOWN_MS = 2000;
+  let lastPushAt = 0;
+
   let canvas: HTMLCanvasElement | undefined = $state();
   let dpr = 1;
   let cycling = $state(false);
@@ -152,6 +158,12 @@
   let knobNodes = $state<string[]>([]);
   async function pushCarousel() {
     if (!store.device) return toast('err', 'No device connected');
+    const now = Date.now();
+    if (now - lastPushAt < PUSH_COOLDOWN_MS) {
+      if (!silent) toast('info', 'Please wait a moment before pushing again');
+      return;
+    }
+    lastPushAt = now;
     busy = true;
     try {
       const frames = osCarouselFrames(
@@ -174,6 +186,12 @@
   let slotPages = $state<string[]>(['lock', 'dash', 'music', 'perf', 'focus']);
   async function pushSlots() {
     if (!store.device) return toast('err', 'No device connected');
+    const now = Date.now();
+    if (now - lastPushAt < PUSH_COOLDOWN_MS) {
+      if (!silent) toast('info', 'Please wait a moment before pushing again');
+      return;
+    }
+    lastPushAt = now;
     busy = true;
     try {
       for (let i = 0; i < 5; i++) {
@@ -205,6 +223,12 @@
 
   async function pushCartridge(silent = false) {
     if (!store.device) return toast('err', 'No device connected');
+    const now = Date.now();
+    if (now - lastPushAt < PUSH_COOLDOWN_MS) {
+      if (!silent) toast('info', 'Please wait a moment before pushing again');
+      return;
+    }
+    lastPushAt = now;
     busy = true;
     try {
       const count = Math.max(1, Math.min(255, Math.round(cartFrames)));
@@ -256,6 +280,12 @@
 
   async function push(silent = false) {
     if (!store.device) return toast('err', 'No device connected');
+    const now = Date.now();
+    if (now - lastPushAt < PUSH_COOLDOWN_MS) {
+      if (!silent) toast('info', 'Please wait a moment before pushing again');
+      return;
+    }
+    lastPushAt = now;
     busy = true;
     try {
       const frames = osFrames(osState.page, W, H, 1);
@@ -272,6 +302,12 @@
 
   async function pushAnimation(silent = false) {
     if (!store.device) return toast('err', 'No device connected');
+    const now = Date.now();
+    if (now - lastPushAt < PUSH_COOLDOWN_MS) {
+      if (!silent) toast('info', 'Please wait a moment before pushing again');
+      return;
+    }
+    lastPushAt = now;
     busy = true;
     try {
       const frames = osFrames(osState.page, W, H, 30);

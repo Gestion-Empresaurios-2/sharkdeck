@@ -171,8 +171,14 @@ pub struct KnobAction {
 /// detents the firmware emits for the knob are recognised; ordinary typing is
 /// ignored.
 pub fn classify_knob(ev: &RawEvent) -> Option<KnobAction> {
-    if ev.kind != 0x01 || ev.value == 0 {
-        return None; // EV_KEY only, and only the "pressed" edge
+    if ev.kind != 0x01 {
+        return None; // EV_KEY only
+    }
+    // value 1 = the press edge, value 0 = release, value 2 = auto-repeat.
+    // Only the edge counts: the kernel repeats a held key, and every repeat
+    // used to trigger another screen push (which hammered the keyboard).
+    if ev.value != 1 {
+        return None;
     }
     let dir = match ev.code {
         KNOB_TURN_UP => "right",

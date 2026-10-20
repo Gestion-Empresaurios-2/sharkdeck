@@ -27,8 +27,10 @@ pub struct AppConfig {
 impl Default for AppConfig {
     fn default() -> Self {
         AppConfig {
-            screen_width: 128,
-            screen_height: 128,
+            // Registry panel size for the K86 (240x135); verified 128x128 square
+            // remains selectable via the panel-size campaign in Templates.
+            screen_width: 240,
+            screen_height: 135,
             order: PixelOrder::Column,
             max_frames: 30,
         }
@@ -59,9 +61,21 @@ pub fn config_path(app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
 }
 
 pub fn load_config(path: Option<std::path::PathBuf>) -> AppConfig {
-    path.and_then(|p| fs::read_to_string(p).ok())
+    let cfg: AppConfig = path
+        .and_then(|p| fs::read_to_string(p).ok())
         .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_default()
+        .unwrap_or_default();
+    // Migrate stale 128x128 defaults to the registry panel (240x135) so old
+    // configs don't pin the app to the square that ignores the panel edge.
+    if cfg.screen_width == 128 && cfg.screen_height == 128 {
+        AppConfig {
+            screen_width: 240,
+            screen_height: 135,
+            ..cfg
+        }
+    } else {
+        cfg
+    }
 }
 
 #[tauri::command]
@@ -345,17 +359,19 @@ pub fn screen_import(
     }))
 }
 
-/// Upload a builtin pattern directly.
+/// Upload a builtin pattern directly (wizard can override panel size).
 #[tauri::command]
 pub fn screen_pattern(
     app: tauri::State<'_, AppState>,
     pattern: String,
     slot: Option<u8>,
+    width: Option<u32>,
+    height: Option<u32>,
 ) -> Result<serde_json::Value, String> {
     use base64::Engine;
     let cfg = *app.config.lock().unwrap();
     let kb = kb_of(&app)?;
-    let (w, h) = (cfg.screen_width, cfg.screen_height);
+    let (w, h) = (width.unwrap_or(cfg.screen_width), height.unwrap_or(cfg.screen_height));
     let frame = match pattern.as_str() {
         "test" => scr::test_pattern(w, h),
         "ruler" => scr::ruler_pattern(w, h),
@@ -410,6 +426,64 @@ pub fn screen_clock(
         .collect();
     kb.screen_write_animation(&refs, cfg.screen_width as u16, cfg.screen_height as u16)?;
     Ok(())
+}
+
+/// Upload a composed template animation: each frame arrives as base64 RGBA
+/// plus a delay byte (10ms units), 2..90 frames.
+#[derive(serde::Deserialize)]
+pub struct AnimFrame {
+    pub rgba_b64: String,
+    pub delay: u8,
+}
+
+#[tauri::command]
+pub fn screen_anim_push(
+    app: tauri::State<'_, AppState>,
+    frames: Vec<AnimFrame>,
+    width: u32,
+    height: u32,
+    order: Option<PixelOrder>,
+) -> Result<(), String> {
+    use base64::Engine;
+    if frames.is_empty() {
+        return Err("no frames".into());
+    }
+    if frames.len() > 90 {
+        return Err("max 90 frames".into());
+    }
+    let cfg = *app.config.lock().unwrap();
+    let kb = kb_of(&app)?;
+    let order = order.unwrap_or(cfg.order);
+    let mut rgba_frames = Vec::with_capacity(frames.len());
+    for f in &frames {
+        let raw = base64::engine::general_purpose::STANDARD
+            .decode(&f.rgba_b64)
+            .map_err(|e| format!("bad frame b64: {e}"))?;
+        if raw.len() != (width * height * 4) as usize {
+            return Err(format!(
+                "frame is {} bytes, expected {} ({w}x{h}x4)",
+                raw.len(),
+                width * height * 4,
+                w = width,
+                h = height
+            ));
+        }
+        rgba_frames.push((raw, f.delay));
+    }
+    let packed: Vec<(Vec<u8>, u8)> = rgba_frames
+        .iter()
+        .map(|(raw, d)| {
+            (
+                sharkdeck_core::protocol::encode565(&raw, width as usize, height as usize, 4, order),
+                *d,
+            )
+        })
+        .collect();
+    let refs: Vec<(&[u8], u8)> = packed
+        .iter()
+        .map(|(b, d)| (b.as_slice(), *d))
+        .collect();
+    kb.screen_write_animation(&refs, width as u16, height as u16)
 }
 
 /// File dialog via rfd; must run on the main thread (GTK). Returns the path.

@@ -75,8 +75,11 @@ export function screenImport(path: string, mode: string, order?: string, slot?: 
     slot: number;
   }>('screen_import', { path, mode, order, slot, slotCount });
 }
-export function screenPattern(pattern: string, slot?: number) {
-  return invoke<{ preview: string; width: number; height: number }>('screen_pattern', { pattern, slot });
+export function screenPattern(pattern: string, slot?: number, width?: number, height?: number) {
+  return invoke<{ preview: string; width: number; height: number }>('screen_pattern', { pattern, slot, width, height });
+}
+export function screenAnimPush(frames: { rgba_b64: string; delay: number }[], width: number, height: number, order?: string) {
+  return invoke<null>('screen_anim_push', { frames, width, height, order });
 }
 export function screenClock(frames?: number, withSeconds?: boolean, color?: number[], background?: number[]) {
   return invoke<null>('screen_clock', { frames, withSeconds, color, background });

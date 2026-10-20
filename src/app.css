@@ -1,26 +1,33 @@
-/* SharkDeck — dark glassy design system */
+/* SharkDeck — GNOME / Yaru-flavoured design system (flat, light, no gradients) */
 
 :root {
-  --bg: #0b0e14;
-  --bg-soft: #10141d;
-  --panel: rgba(255, 255, 255, 0.04);
-  --panel-strong: rgba(255, 255, 255, 0.07);
-  --border: rgba(255, 255, 255, 0.08);
-  --border-strong: rgba(255, 255, 255, 0.14);
-  --text: #e8ecf4;
-  --text-dim: #9aa4b8;
-  --text-faint: #5d6779;
-  --accent: #5b8cff;
-  --accent2: #7b61ff;
-  --grad: linear-gradient(135deg, #5b8cff, #7b61ff);
-  --ok: #4ade80;
-  --warn: #fbbf24;
-  --err: #f87171;
-  --radius: 14px;
-  --radius-sm: 9px;
-  --shadow: 0 10px 40px rgba(0, 0, 0, 0.45);
-  --font: 'Inter', -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  --mono: 'SF Mono', 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+  /* Adwaita-light surfaces */
+  --bg: #fafafa;
+  --panel: #ffffff;
+  --panel-2: #f2f1f0;      /* sidebars, header bars, sunken areas */
+  --panel-hover: rgba(0, 0, 0, 0.05);
+  --border: rgba(0, 0, 0, 0.11);
+  --border-strong: rgba(0, 0, 0, 0.18);
+
+  --text: #242424;
+  --text-dim: rgba(0, 0, 0, 0.55);
+  --text-faint: rgba(0, 0, 0, 0.4);
+
+  /* Yaru accent */
+  --accent: #e95420;
+  --accent-hover: #c7431a;
+  --accent-soft: rgba(233, 84, 32, 0.12);
+
+  --ok: #268f51;
+  --warn: #c35503;
+  --err: #d71c2d;
+
+  --radius: 12px;
+  --radius-sm: 6px;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.05), 0 2px 8px rgba(0, 0, 0, 0.04);
+
+  --font: 'Ubuntu', 'Cantarell', -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --mono: 'Ubuntu Mono', 'SF Mono', 'JetBrains Mono', 'Fira Code', Consolas, monospace;
 }
 
 * {
@@ -67,22 +74,23 @@ button {
 select,
 input[type='number'],
 input[type='text'] {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid var(--border);
+  background: #fff;
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
-  padding: 8px 10px;
+  padding: 7px 9px;
   outline: none;
-  transition: border 0.15s;
+  transition: border-color 0.12s, box-shadow 0.12s;
 }
 
 select:focus,
 input:focus {
-  border-color: rgba(91, 140, 255, 0.6);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
 }
 
 select option,
 select optgroup {
-  background: #141a26;
+  background: #fff;
   color: var(--text);
 }
 
@@ -93,8 +101,8 @@ input[type='range'] {
 input[type='color'] {
   width: 34px;
   height: 30px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
   background: none;
   padding: 2px;
   cursor: pointer;
@@ -111,67 +119,68 @@ input[type='checkbox'] {
   height: 9px;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.2);
   border-radius: 8px;
   border: 2px solid transparent;
   background-clip: content-box;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(0, 0, 0, 0.32);
   background-clip: content-box;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 
-/* ---- shared component classes (global since paged components use them) ---- */
+/* ---- shared component classes ---- */
 
 .panel {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 18px;
+  padding: 16px 18px;
+  box-shadow: var(--shadow);
 }
 
 .panel h3 {
   font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--text-dim);
-  margin-bottom: 14px;
+  margin-bottom: 12px;
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
 .page {
-  padding: 24px 28px 40px;
+  padding: 22px 28px 44px;
   height: 100%;
   overflow-y: auto;
 }
 
 .page > .page-head {
-  margin-bottom: 20px;
+  margin-bottom: 18px;
 }
 
 .page-head h2 {
-  font-size: 21px;
-  font-weight: 650;
-  letter-spacing: -0.015em;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: 0;
 }
 
 .page-head p {
   color: var(--text-dim);
   font-size: 13px;
   margin-top: 4px;
-  max-width: 720px;
+  max-width: 760px;
   line-height: 1.5;
 }
 
 .grid {
   display: grid;
-  gap: 16px;
+  gap: 14px;
 }
 
 .row {
@@ -189,48 +198,53 @@ input[type='checkbox'] {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  padding: 9px 15px;
+  padding: 8px 14px;
   border-radius: var(--radius-sm);
-  border: 1px solid var(--border);
-  background: var(--panel-strong);
+  border: 1px solid var(--border-strong);
+  background: var(--panel);
   color: var(--text);
-  font-weight: 550;
+  font-weight: 500;
   font-size: 13px;
   transition:
-    background 0.15s,
-    border 0.15s,
-    transform 0.1s;
+    background 0.12s,
+    border-color 0.12s,
+    transform 0.08s;
   white-space: nowrap;
 }
 
 .btn:hover {
-  background: rgba(255, 255, 255, 0.1);
-  border-color: var(--border-strong);
+  background: var(--panel-hover);
 }
 .btn:active {
   transform: scale(0.985);
+  background: rgba(0, 0, 0, 0.09);
 }
 .btn:disabled {
-  opacity: 0.45;
+  opacity: 0.5;
   cursor: default;
 }
 
 .btn.primary {
-  background: var(--grad);
-  border: none;
+  background: var(--accent);
+  border-color: var(--accent);
   color: #fff;
+  font-weight: 600;
 }
 .btn.primary:hover {
-  filter: brightness(1.1);
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
 }
 
 .btn.danger {
-  border-color: rgba(248, 113, 113, 0.4);
+  border-color: rgba(215, 28, 45, 0.45);
   color: var(--err);
+}
+.btn.danger:hover {
+  background: rgba(215, 28, 45, 0.07);
 }
 
 .btn.sm {
-  padding: 6px 10px;
+  padding: 5px 10px;
   font-size: 12px;
 }
 
@@ -238,29 +252,29 @@ input[type='checkbox'] {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 10px;
+  padding: 3px 10px;
   font-size: 11.5px;
-  font-weight: 550;
+  font-weight: 500;
   border-radius: 99px;
   border: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--panel-2);
   color: var(--text-dim);
 }
 
 .pill.ok {
   color: var(--ok);
-  border-color: rgba(74, 222, 128, 0.35);
-  background: rgba(74, 222, 128, 0.09);
+  border-color: rgba(38, 143, 81, 0.35);
+  background: rgba(38, 143, 81, 0.08);
 }
 .pill.warn {
   color: var(--warn);
-  border-color: rgba(251, 191, 36, 0.3);
-  background: rgba(251, 191, 36, 0.08);
+  border-color: rgba(195, 85, 3, 0.35);
+  background: rgba(195, 85, 3, 0.07);
 }
 .pill.err {
   color: var(--err);
-  border-color: rgba(248, 113, 113, 0.3);
-  background: rgba(248, 113, 113, 0.08);
+  border-color: rgba(215, 28, 45, 0.3);
+  background: rgba(215, 28, 45, 0.06);
 }
 
 .dot {
@@ -271,29 +285,31 @@ input[type='checkbox'] {
 }
 
 .chip {
-  padding: 4px 9px;
-  border-radius: 7px;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.04);
-  font-size: 11.5px;
+  background: var(--panel);
+  font-size: 12px;
   color: var(--text-dim);
   cursor: pointer;
-  transition: all 0.13s;
+  transition: all 0.12s;
 }
 .chip:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--panel-hover);
+  color: var(--text);
 }
 .chip.sel {
-  background: var(--grad);
-  border-color: transparent;
+  background: var(--accent);
+  border-color: var(--accent);
   color: #fff;
+  font-weight: 600;
 }
 
 .kv {
   display: flex;
   justify-content: space-between;
   padding: 7px 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
   font-size: 13px;
 }
 .kv:last-child {
@@ -315,12 +331,16 @@ input[type='checkbox'] {
 }
 
 .spinner {
-  width: 15px;
-  height: 15px;
-  border: 2px solid rgba(255, 255, 255, 0.2);
-  border-top-color: #fff;
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(0, 0, 0, 0.15);
+  border-top-color: var(--accent);
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
+}
+.btn.primary .spinner {
+  border-color: rgba(255, 255, 255, 0.35);
+  border-top-color: #fff;
 }
 
 @keyframes spin {

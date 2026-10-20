@@ -1,92 +1,86 @@
 <script lang="ts">
   import { onMount } from 'svelte';
 
-  let {
-    preview = '',
-    width = 128,
-    height = 128,
-    zoom = 3,
-    label = '',
-  }: { preview?: string; width?: number; height?: number; zoom?: number; label?: string } = $props();
+  let { preview, width = 128, height = 128, zoom = 3, label } = $props();
 
-  let cv: HTMLCanvasElement | undefined = $state();
+  let canvas: HTMLCanvasElement;
 
   $effect(() => {
+    const cv = canvas;
     if (!cv) return;
-    void draw();
-  });
-
-  function draw() {
-    if (!cv) return;
+    const w = width;
+    const h = height;
+    const z = Math.max(1, Math.floor(zoom));
+    cv.width = w * z;
+    cv.height = h * z;
     const ctx = cv.getContext('2d');
     if (!ctx) return;
-    cv.width = width * zoom;
-    cv.height = height * zoom;
-    ctx.imageSmoothingEnabled = false;
-    ctx.clearRect(0, 0, cv.width, cv.height);
-    // checkerboard backdrop
-    ctx.fillStyle = '#0d1017';
+    // very subtle checker so size is evident on the light background
+    ctx.fillStyle = '#f3f2f1';
     ctx.fillRect(0, 0, cv.width, cv.height);
-    if (!preview) {
-      ctx.fillStyle = '#232a38';
-      ctx.font = `${13 * Math.max(1, zoom / 2)}px Inter, sans-serif`;
-      ctx.textAlign = 'center';
-      ctx.fillText('no preview', cv.width / 2, cv.height / 2);
-      return;
+    ctx.fillStyle = '#e9e8e7';
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        if ((x + y) % 2 === 0) ctx.fillRect(x * z, y * z, z, z);
+      }
     }
+    if (!preview) return;
     try {
       const bin = atob(preview);
-      const bytes = new Uint8ClampedArray(width * height * 4);
-      const n = Math.min(bytes.length, bin.length);
-      for (let i = 0; i < n; i++) bytes[i] = bin.charCodeAt(i);
-      const tmp = document.createElement('canvas');
-      tmp.width = width;
-      tmp.height = height;
-      const tctx = tmp.getContext('2d')!;
-      tctx.putImageData(new ImageData(bytes, width, height), 0, 0);
-      ctx.drawImage(tmp, 0, 0, width, height, 0, 0, cv.width, cv.height);
+      if (bin.length !== w * h * 4) {
+        ctx.fillStyle = bgFor(h);
+        ctx.fillRect(0, 0, cv.width, cv.height);
+        ctx.fillStyle = '#d71c2d';
+        ctx.font = `600 ${Math.min(cv.width, cv.height) / 10 + 6}px sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('bad preview data', cv.width / 2, cv.height / 2);
+        return;
+      }
+      const px = new Uint8ClampedArray(bin.length);
+      for (let i = 0; i < bin.length; i++) px[i] = bin.charCodeAt(i);
+      const img = new ImageData(px, w, h);
+      const tmp = new OffscreenCanvas(w, h);
+      tmp.getContext('2d')?.putImageData(img, 0, 0);
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(tmp as unknown as CanvasImageSource, 0, 0, cv.width, cv.height);
     } catch {
-      ctx.fillStyle = '#f87171';
-      ctx.font = '13px Inter, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('bad preview data', cv.width / 2, cv.height / 2);
+      /* leave checker */
     }
+  });
+
+  function bgFor(h: number) {
+    return `hsl(0 0% ${Math.min(96, 88 + (h % 5))}%)`;
   }
 
-  onMount(() => draw());
+  onMount(() => {/* draw happens via effect */});
 </script>
 
 <div class="wrap">
-  {#if label}<div class="label">{label}</div>{/if}
-  <div class="frame">
-    <canvas bind:this={cv}></canvas>
-  </div>
+  <canvas bind:this={canvas} class="frame"></canvas>
+  {#if label}
+    <div class="cap">{label}</div>
+  {/if}
 </div>
 
 <style>
   .wrap {
     display: flex;
     flex-direction: column;
-    gap: 10px;
     align-items: center;
-  }
-  .label {
-    font-size: 12px;
-    color: var(--text-dim);
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    font-weight: 600;
+    gap: 8px;
   }
   .frame {
+    background: #e9e8e7;
     border: 1px solid var(--border-strong);
-    border-radius: 12px;
-    overflow: hidden;
-    box-shadow: var(--shadow), 0 0 40px rgba(91, 140, 255, 0.06);
-    background: #0d1017;
-  }
-  canvas {
-    display: block;
-    width: 100%;
+    border-radius: 10px;
+    image-rendering: pixelated;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+    max-width: 100%;
     height: auto;
+  }
+  .cap {
+    font-size: 11px;
+    color: var(--dim);
   }
 </style>

@@ -1,76 +1,85 @@
 <script lang="ts">
-  import { store, probeDevice, connected } from './lib/store.svelte';
-  import { onMount } from 'svelte';
+  import { store } from './lib/store.svelte';
   import Screen from './pages/Screen.svelte';
   import Knob from './pages/Knob.svelte';
   import Lighting from './pages/Lighting.svelte';
   import Keymap from './pages/Keymap.svelte';
   import Macros from './pages/Macros.svelte';
+  import Templates from './pages/Templates.svelte';
   import Settings from './pages/Settings.svelte';
+  import { onMount } from 'svelte';
 
-  const nav: { id: string; label: string; icon: string }[] = [
-    { id: 'screen', label: 'Screen', icon: 'M5 3h14a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1h-5l1.5 3h-8L9 16H5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Zm2 13h10' },
-    { id: 'knob', label: 'Knob', icon: 'M12 4a8 8 0 1 1 0 16 8 8 0 0 1 0-16Zm0 3v5l4 2' },
-    { id: 'lighting', label: 'Lighting', icon: 'M12 4a6 6 0 0 1 4 10.5c-.6.55-1 1.4-1 2.5H9c0-1.1-.4-1.95-1-2.5A6 6 0 0 1 12 4ZM10 20h4' },
-    { id: 'keymap', label: 'Keymap', icon: 'M3 6h18v12H3V6Zm3 3h2m2 0h2m2 0h2m2 0h2M8 12h2m2 0h2m2 0h2m-6 3h6' },
-    { id: 'macros', label: 'Macros', icon: 'M6 3h12v4H6V3Zm0 14h12v4H6v-4ZM9 9l6 6m-6 0 6-6' },
-    { id: 'settings', label: 'Device', icon: 'M12 8a4 4 0 1 1 0 8 4 4 0 0 1 0-8Zm8 4 2-1-1-2.5-2.3.6a7 7 0 0 0-1.5-.9L16.6 5h-2.7l-.4 2.2c-.5.2-1 .5-1.5.9L9.7 7.5 8 10l1.7 1.5a7 7 0 0 0 0 1.8L8 15l1.7 2.5 2.3-.6c.5.4 1 .7 1.5.9l.4 2.2h2.7l.6-2.2c.5-.2 1-.5 1.5-.9l2.3.6L22 15l-2-1.5a7 7 0 0 0 0-1Z' },
+  const PAGES = [
+    { id: 'screen', label: 'Screen' },
+    { id: 'templates', label: 'Templates' },
+    { id: 'knob', label: 'Knob' },
+    { id: 'lighting', label: 'Lighting' },
+    { id: 'keymap', label: 'Keymap' },
+    { id: 'macros', label: 'Macros' },
+    { id: 'settings', label: 'Device' },
   ];
 
+  // Minimal flat line icons (16x16, stroke) — GNOME-ish, no fills, no gradients.
+  const ICONS: Record<string, string> = {
+    screen: 'M2 3h12v8H2z M6 14h4 M8 11v3',
+    templates: 'M2 2h5v5H2z M9 2h5v5H9z M2 9h5v5H2z M9 9h5v5H9z',
+    knob: 'M8 2a6 6 0 016 6 6 6 0 01-6 6 6 6 0 01-6-6 6 6 0 016-6z M8 8m-2 0a2 2 0 104 0 2 2 0 10-4 0',
+    lighting: 'M8 1v2 M8 13v2 M2 8h2 M12 8h2 M4 4l1.4 1.4 M10.6 10.6L12 12 M12 4l-1.4 1.4 M5.4 10.6L4 12 M8 5a3 3 0 100 6 3 3 0 000-6',
+    keymap: 'M1.5 4h13v8h-13z M4 6.5h1 M7 6.5h1 M10 6.5h1 M12 6.5h1 M5 9.5h6',
+    macros: 'M3 2h10v12H3z M5.5 5h5 M5.5 8h5 M5.5 11h3',
+    settings: 'M8 5a3 3 0 103 3 3 3 0 00-3-3z M13.6 9.5l1.8-1.5-1.8-1.5.3-2.3-2.2-.7L10.4 2 8.2 2.9 6 2l-1.3 1.5-2.2.7.3 2.3L1 8l1.8 1.5-.3 2.3 2.2.7L6 14l2.2-.9 2.2.9 1.3-1.5 2.2-.7z',
+  };
+
   onMount(() => {
-    probeDevice();
+    void store.probeDevice();
   });
 </script>
 
 <div class="app">
-  <aside class="side">
+  <aside>
     <div class="brand">
-      <svg viewBox="0 0 24 24" width="26" height="26" stroke="none">
-        <defs>
-          <linearGradient id="finG" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0" stop-color="#5b8cff" />
-            <stop offset="1" stop-color="#7b61ff" />
-          </linearGradient>
-        </defs>
-        <path d="M3 19 21 4c-1.5 9-6.5 13-11 13.5L4 21l-1-2Z" fill="url(#finG)" />
-      </svg>
+      <div class="brand-tile">
+        <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+          <path d="M12.6 2.4 C 9 6 7.4 10.6 7.6 15.2 L 7.6 21.6 C 11.6 20.2 14.6 17.2 16.2 13.4 C 17.2 10.8 17 8 15.4 5.4 L 13 2.4 Z" fill="#7a7ff0" opacity="0.95"/>
+          <path d="M7.6 15.2 L 7.6 21.6 C 9.2 21.06 10.7 20.2 12 19.2 L 9.6 15.2 Z" fill="#5a5fd6"/>
+        </svg>
+      </div>
       <div>
         <div class="brand-name">SharkDeck</div>
         <div class="brand-sub">Attack Shark K86</div>
       </div>
     </div>
 
-    <nav class="nav">
-      {#each nav as item (item.id)}
-        <button
-          class="nav-item"
-          class:sel={store.page === item.id}
-          onclick={() => (store.page = item.id)}
-        >
-          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
-            <path d={item.icon} />
+    <nav>
+      {#each PAGES as p (p.id)}
+        <button class="nav-btn" class:sel={store.page === p.id} onclick={() => (store.page = p.id as any)}>
+          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+            <path d={ICONS[p.id]} fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" />
           </svg>
-          {item.label}
+          {p.label}
         </button>
       {/each}
     </nav>
 
-    <div class="device-status">
-      {#if connected()}
-        <span class="pill ok"><span class="dot"></span>Connected</span>
-        <div class="hint mono" style="margin-top:6px">{store.device?.path}</div>
-      {:else}
-        <span class="pill warn"><span class="dot"></span>No device</span>
-        <button class="btn sm" style="margin-top:10px; width:100%" onclick={probeDevice} disabled={store.busy}>
-          {#if store.busy}<span class="spinner"></span>{:else}Probe{/if}
+    <div class="aside-foot">
+      <div class="dev-card">
+        <div class="dev-row">
+          <span class="dot" class:ok={store.device} class:err={!store.device}></span>
+          <span class="dev-name">{store.device ? 'Connected' : 'No device'}</span>
+        </div>
+        <div class="dev-path" title={store.device?.path ?? ''}>{store.device?.path ?? 'via USB cable'}</div>
+        <button class="btn sm" style="margin-top:6px" disabled={store.busy} onclick={() => void store.probeDevice()}>
+          {store.busy ? 'Probing…' : 'Probe device'}
         </button>
-      {/if}
+      </div>
     </div>
   </aside>
 
-  <main class="main">
+  <main>
     {#if store.page === 'screen'}
       <Screen />
+    {:else if store.page === 'templates'}
+      <Templates />
     {:else if store.page === 'knob'}
       <Knob />
     {:else if store.page === 'lighting'}
@@ -94,114 +103,129 @@
 <style>
   .app {
     display: grid;
-    grid-template-columns: 236px 1fr;
-    height: 100vh;
-    background:
-      radial-gradient(1000px 500px at 85% -10%, rgba(91, 140, 255, 0.09), transparent 60%),
-      radial-gradient(800px 500px at -10% 110%, rgba(123, 97, 255, 0.07), transparent 60%),
-      var(--bg);
+    grid-template-columns: 232px 1fr;
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
   }
-
-  .side {
+  aside {
+    background: var(--panel);
     border-right: 1px solid var(--border);
-    background: rgba(11, 14, 20, 0.7);
-    backdrop-filter: blur(10px);
     display: flex;
     flex-direction: column;
-    padding: 18px 14px;
-    gap: 20px;
+    padding: 12px 10px;
+    gap: 10px;
   }
-
   .brand {
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 2px 6px;
+    padding: 6px 8px 10px;
+    border-bottom: 1px solid var(--border);
+  }
+  .brand-tile {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    background: #20253a;
+    display: grid;
+    place-items: center;
+    border: 1px solid rgba(0, 0, 0, 0.2);
+    flex-shrink: 0;
   }
   .brand-name {
+    font-size: 15px;
     font-weight: 700;
-    font-size: 15.5px;
     letter-spacing: -0.01em;
   }
   .brand-sub {
-    font-size: 10.5px;
-    color: var(--text-faint);
-    letter-spacing: 0.08em;
+    font-size: 10px;
     text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--dim);
+    margin-top: 1px;
   }
-
-  .nav {
+  nav {
     display: flex;
     flex-direction: column;
-    gap: 3px;
+    gap: 2px;
   }
-  .nav-item {
+  .nav-btn {
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 9px 12px;
-    border-radius: 10px;
-    color: var(--text-dim);
-    font-weight: 520;
+    padding: 8px 10px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--dim);
     font-size: 13.5px;
-    transition: all 0.14s;
+    font-weight: 500;
+    cursor: pointer;
     text-align: left;
+    transition: background 0.12s ease, color 0.12s ease;
   }
-  .nav-item:hover {
-    background: rgba(255, 255, 255, 0.05);
+  .nav-btn:hover {
+    background: var(--hover);
     color: var(--text);
   }
-  .nav-item.sel {
-    background: linear-gradient(135deg, rgba(91, 140, 255, 0.18), rgba(123, 97, 255, 0.14));
-    color: #fff;
-    box-shadow: inset 0 0 0 1px rgba(91, 140, 255, 0.25);
+  .nav-btn.sel {
+    background: var(--panel-2);
+    color: var(--text);
+    box-shadow: inset 3px 0 0 0 var(--accent);
+    font-weight: 600;
   }
-
-  .device-status {
+  .aside-foot {
     margin-top: auto;
-    padding: 12px;
+  }
+  .dev-card {
+    background: var(--panel-2);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    background: var(--panel);
+    padding: 10px;
   }
-
-  .main {
-    overflow: hidden;
+  .dev-row {
     display: flex;
-    flex-direction: column;
+    align-items: center;
+    gap: 7px;
+    font-size: 12.5px;
+    font-weight: 600;
   }
-
+  .dev-path {
+    margin-top: 3px;
+    font-size: 11px;
+    color: var(--dim);
+    font-family: var(--mono);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  main {
+    overflow-y: auto;
+    background: var(--bg);
+  }
   .toasts {
     position: fixed;
-    right: 18px;
-    bottom: 18px;
+    right: 14px;
+    bottom: 14px;
     display: flex;
     flex-direction: column;
     gap: 8px;
     z-index: 50;
-    max-width: 420px;
   }
   .toast {
-    padding: 10px 14px;
-    border-radius: 12px;
+    background: rgba(0, 0, 0, 0.85);
+    color: #fff;
     font-size: 12.5px;
-    background: rgba(20, 24, 34, 0.95);
-    border: 1px solid var(--border-strong);
-    box-shadow: var(--shadow);
-    animation: rise 0.18s ease-out;
-    line-height: 1.45;
-  }
-  .toast.ok {
-    border-color: rgba(74, 222, 128, 0.4);
+    padding: 9px 14px;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18);
+    max-width: 380px;
   }
   .toast.err {
-    border-color: rgba(248, 113, 113, 0.45);
-    color: #fca5a5;
+    border-left: 3px solid var(--err);
   }
-  @keyframes rise {
-    from {
-      opacity: 0;
-      transform: translateY(8px);
-    }
+  .toast.ok {
+    border-left: 3px solid var(--ok);
   }
 </style>

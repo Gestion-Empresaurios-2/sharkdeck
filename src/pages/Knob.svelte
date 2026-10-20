@@ -26,13 +26,14 @@
   let editing = $state<{ slot: number; entry: Entry4 } | null>(null);
   let loading = $state(false);
 
-  // Native knob: the firmware exposes the knob as a mouse-like HID device,
+  // Native knob: the firmware reports the knob as consumer-control key codes,
   // so the kernel gives us a relative-axis input node we can listen to.
   let knobNode = $state<api.InputDevice | null>(null);
   let knobSummary = $state<api.KnobSummary | null>(null);
   let knobError = $state('');
   let knobMode = $state('');
   let knobRaw = $state<string[]>([]);
+  let knobNodes = $state<Record<string, number>>({});
   let listening = $state(false);
 
   async function loadKnob() {
@@ -53,6 +54,7 @@
       knobSummary = r.summary;
       knobMode = r.mode ?? 'evdev';
       knobRaw = r.hidraw ?? [];
+      knobNodes = r.nodes ?? {};
       if (r.note) knobError = r.note;
     } catch (e) {
       knobError = errText(e);
@@ -209,10 +211,12 @@
     <h3>Native knob</h3>
     {#if knobNode}
       <p class="hint">
-        The keyboard's own firmware reports the knob as a mouse-like HID device — the kernel
-        exposes it as
-        <span class="mono">{knobNode.path}</span> ({knobNode.name}). Turn or press the knob
-        while listening to see its raw movement.
+        Measured on this board: the firmware reports the knob as <b>consumer-control keys</b> —
+        <span class="mono">volume-up</span> (115) for one direction,
+        <span class="mono">volume-down</span> (114) for the other and
+        <span class="mono">mute</span> (113) for the press — on the keyboard's Consumer Control
+        node <span class="mono">{knobNode.path}</span>. Turn or press the knob while listening
+        to count real detents.
       </p>
       <div class="row" style="margin: 10px 0">
         <button class="btn" onclick={listenKnob} disabled={listening}>
@@ -227,6 +231,9 @@
           <div class="kv"><span>Presses</span><b>{knobSummary.presses}</b></div>
         </div>
         <p class="hint">Axes seen: {knobSummary.axes.join(', ') || '—'}</p>
+        {#if Object.keys(knobNodes).length}
+          <p class="hint">Source node: {Object.entries(knobNodes).map(([p, n]) => `${p.split('/').pop()} (${n})`).join(', ')}</p>
+        {/if}
       {/if}
       {#if knobMode}
         <p class="hint">

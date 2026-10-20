@@ -11,6 +11,7 @@ serde_json = "1"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp", "ico", "bmp"] }
 gif = "0.13"
 base64 = "0.22"
+libc = "0.2"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 
 [[bin]]

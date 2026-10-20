@@ -208,6 +208,7 @@ export const knobEvents = (seconds = 5) =>
     summary: KnobSummary | null;
     events: number;
     mode?: 'evdev' | 'hidraw';
+  nodes?: Record<string, number>;
     note?: string;
     hidraw?: string[];
   }>('knob_events', {

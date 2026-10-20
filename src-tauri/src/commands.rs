@@ -123,43 +123,74 @@ pub fn knob_devices() -> Result<serde_json::Value, String> {
 pub fn knob_events(seconds: Option<u32>) -> Result<serde_json::Value, String> {
     let secs = seconds.unwrap_or(5).clamp(1, 60);
     let devices = sharkdeck_core::events::list_devices();
-    let node = devices
+    // The knob is reported as consumer-control key codes on the keyboard's
+    // "Consumer Control" node, so every node of the device is listened to at
+    // once and only the consumer codes are classified as knob input.
+    let nodes: Vec<String> = devices
         .iter()
-        .find(|d| sharkdeck_core::events::is_knob_device(&d.name))
+        .filter(|d| sharkdeck_core::events::is_knob_device(&d.name))
+        .map(|d| d.path.clone())
+        .collect();
+    let primary = devices
+        .iter()
+        .find(|d| d.name.contains("Consumer Control"))
+        .or_else(|| devices.iter().find(|d| sharkdeck_core::events::is_knob_device(&d.name)))
         .cloned();
 
-    if let Some(node) = node {
-        match sharkdeck_core::events::read_events(&node.path, secs as u64) {
-            Ok(raw) => {
-                let summary = sharkdeck_core::events::summarise(&raw);
-                return Ok(serde_json::json!({
-                    "device": node,
-                    "summary": summary,
-                    "events": raw.len(),
-                    "raw": raw,
-                    "mode": "evdev",
-                    "hidraw": Vec::<String>::new(),
-                }));
+    if !nodes.is_empty() {
+        let ev = sharkdeck_core::events::read_events_multi(&nodes, secs as u64);
+        if !ev.is_empty() {
+            let summary = sharkdeck_core::events::summarise(
+                &ev.iter().map(|(_, e)| *e).collect::<Vec<_>>(),
+            );
+            // Per-node breakdown so the UI can name the source of the events.
+            let mut per_node: std::collections::BTreeMap<String, i32> =
+                std::collections::BTreeMap::new();
+            for (path, e) in &ev {
+                if matches!(
+                    e.code,
+                    sharkdeck_core::events::KNOB_TURN_UP
+                        | sharkdeck_core::events::KNOB_TURN_DOWN
+                        | sharkdeck_core::events::KNOB_PRESS
+                ) {
+                    *per_node.entry(path.clone()).or_insert(0) += 1;
+                }
             }
-            Err(e) => {
-                let hidraw = capture_hidraw(secs as u64);
-                return Ok(serde_json::json!({
-                    "device": node,
-                    "summary": serde_json::Value::Null,
-                    "events": 0,
-                    "raw": Vec::<serde_json::Value>::new(),
-                    "mode": "hidraw",
-                    "note": e,
-                    "hidraw": hidraw,
-                }));
-            }
+            let device = primary.clone().unwrap_or(sharkdeck_core::events::InputDevice {
+                path: nodes[0].clone(),
+                name: "Keyboard input nodes".into(),
+                has_rel: true,
+                has_keys: true,
+            });
+            return Ok(serde_json::json!({
+                "device": device,
+                "summary": summary,
+                "events": ev.len(),
+                "raw": Vec::<serde_json::Value>::new(),
+                "mode": "evdev",
+                "nodes": per_node,
+                "hidraw": Vec::<String>::new(),
+            }));
         }
+        // Nothing moved, but the nodes exist: report a permission hint if the
+        // most likely reason is the missing 'input' group membership.
+        let note = "no knob events in the capture window — turn or press the knob while listening".to_string();
+        return Ok(serde_json::json!({
+            "device": primary,
+            "summary": sharkdeck_core::events::summarise(&[]),
+            "events": 0,
+            "raw": Vec::<serde_json::Value>::new(),
+            "mode": "evdev",
+            "nodes": serde_json::json!({}),
+            "note": note,
+            "hidraw": Vec::<String>::new(),
+        }));
     }
 
     let hidraw = capture_hidraw(secs as u64);
     if hidraw.is_empty() {
         return Err(
-            "no knob input node found (the keyboard exposes the knob as a mouse-like device)"
+            "no keyboard input node found — the K86 reports the knob as consumer-control key events"
                 .into(),
         );
     }

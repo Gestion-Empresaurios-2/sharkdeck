@@ -542,67 +542,46 @@ fn cmd_knob_events(args: &[String]) -> i32 {
             d.path, d.name, d.has_rel, d.has_keys, mark
         );
     }
-    let Some(node) = devices
+    // Listen to every node of the keyboard at once: the knob arrives as
+    // consumer-control key codes on the "Consumer Control" node.
+    let nodes: Vec<String> = devices
         .iter()
-        .find(|d| sharkdeck_core::events::is_knob_device(&d.name))
-    else {
-        println!("no knob node found");
+        .filter(|d| sharkdeck_core::events::is_knob_device(&d.name))
+        .map(|d| d.path.clone())
+        .collect();
+    if nodes.is_empty() {
+        println!("no keyboard input nodes found");
         return 1;
-    };
-    println!("listening {} for {secs}s — turn and press the knob now", node.path);
-    match sharkdeck_core::events::read_events(&node.path, secs) {
-        Ok(ev) => {
-            for e in &ev {
-                let label = if e.kind == 2 {
-                    sharkdeck_core::events::rel_label(e.code)
-                } else if e.kind == 1 {
-                    sharkdeck_core::events::key_label(e.code)
-                } else {
-                    "EV_?"
-                };
-                println!("  kind={} {label} value={}", e.kind, e.value);
-            }
-            let s = sharkdeck_core::events::summarise(&ev);
-            println!(
-                "summary: left={} right={} up={} down={} wheel={} presses={} axes={:?}",
-                s.left, s.right, s.up, s.down, s.wheel, s.presses, s.axes
-            );
-            0
-        }
-        Err(e) => {
-            eprintln!("knob-events: {e}");
-            // Fallback: capture the raw HID stream of the vendor interface
-            // (page 0xFFFF usage 0x0001) so knob activity is visible even
-            // without membership of the 'input' group.
-            if let Ok(cands) = sharkdeck_core::hid::find_candidates() {
-                for c in cands
-                    .iter()
-                    .filter(|c| c.usage_page == 0xFFFF && c.usage == 0x0001)
-                {
-                    println!(
-                        "raw hidraw fallback on {} — turn and press the knob now",
-                        c.path
-                    );
-                    match sharkdeck_core::hid::read_events(&c.path, secs) {
-                        Ok(evs) if evs.is_empty() => {
-                            println!("  (no raw reports — was the knob touched?)")
-                        }
-                        Ok(evs) => {
-                            for (ms, bytes) in evs {
-                                println!(
-                                    "  +{ms}ms {:02x?}  {}",
-                                    bytes,
-                                    sharkdeck_core::events::describe_hid_report(&bytes)
-                                );
-                            }
-                        }
-                        Err(e) => println!("  error: {e}"),
-                    }
-                }
-            }
-            1
-        }
     }
+    println!(
+        "listening to {} nodes for {secs}s — turn and press the knob now",
+        nodes.len()
+    );
+    let ev = sharkdeck_core::events::read_events_multi(&nodes, secs);
+    for (path, e) in &ev {
+        if !matches!(
+            e.code,
+            sharkdeck_core::events::KNOB_TURN_UP
+                | sharkdeck_core::events::KNOB_TURN_DOWN
+                | sharkdeck_core::events::KNOB_PRESS
+        ) {
+            continue;
+        }
+        let label = sharkdeck_core::events::key_label(e.code);
+        println!(
+            "  {} {label} value={}",
+            path.rsplit('/').next().unwrap_or(&path),
+            e.value
+        );
+    }
+    let s = sharkdeck_core::events::summarise(
+        &ev.iter().map(|(_, e)| *e).collect::<Vec<_>>(),
+    );
+    println!(
+        "summary: left={} right={} up={} down={} wheel={} presses={} axes={:?}",
+        s.left, s.right, s.up, s.down, s.wheel, s.presses, s.axes
+    );
+    0
 }
 
 fn cmd_opfull(args: &[String]) -> i32 {

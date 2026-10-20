@@ -1,16 +1,21 @@
 //! Linux evdev reader for the K86's **native** knob.
 //!
-//! The keyboard's firmware exposes the knob as a relative-axis mouse-like
-//! HID device: the kernel creates a "ROYUAN Gaming Keyboard Mouse" node with
-//! REL_X/REL_Y/REL_Z/REL_RY/REL_DIAL/REL_WHEEL axes plus buttons. Reading that
-//! node gives us the knob's real, native behaviour (which the vendor app
-//! maps to volume) and lets the desktop app react to it.
+//! Measured on a K86 (fw 1.19): the knob is **not** a mouse. The firmware
+//! reports it as consumer-control *key* events on the keyboard's "Consumer
+//! Control" node: `KEY_VOLUMEUP` (115) for one direction, `KEY_VOLUMEDOWN`
+//! (114) for the other and `KEY_MUTE` (113) for the press — exactly the
+//! factory behaviour (turn-left = volume down, turn-right = volume up,
+//! press = mute, matching the on-device keymap slots 96/97/78).
+//! Other ROYUAN nodes (keyboard bitmap, system control, mouse) are also
+//! captured, but only the consumer codes above are classified as knob input,
+//! so ordinary typing is never mistaken for a knob turn.
 //!
 //! Reading /dev/input/event* requires membership of the `input` group:
 //! `sudo gpasswd -a <user> input` (then log out/in or replug).
 
 use std::fs;
 use std::io::Read;
+use std::time::{Duration, Instant};
 
 /// One kernel input device node.
 #[derive(Clone, Debug, serde::Serialize)]
@@ -36,11 +41,22 @@ pub struct RawEvent {
     pub value: i32,
 }
 
-/// True when the device name looks like the K86's knob node.
+/// True when the device name belongs to the K86 (any of its HID nodes).
+///
+/// The knob shows up on the *Consumer Control* node; the keyboard, system
+/// control and mouse nodes of the same device are captured too, but only
+/// consumer codes are classified as knob input.
 pub fn is_knob_device(name: &str) -> bool {
     let n = name.to_ascii_lowercase();
-    (n.contains("royuan") || n.contains("attack shark")) && n.contains("mouse")
+    n.contains("royuan") || n.contains("attack shark")
 }
+
+/// Linux key code the firmware sends for a knob turn towards "volume up".
+pub const KNOB_TURN_UP: u16 = 115;
+/// Linux key code for a knob turn towards "volume down".
+pub const KNOB_TURN_DOWN: u16 = 114;
+/// Linux key code for a knob press (mute).
+pub const KNOB_PRESS: u16 = 113;
 
 /// List the kernel input nodes, richest metadata first.
 pub fn list_devices() -> Vec<InputDevice> {
@@ -87,21 +103,46 @@ fn read_sysfs(event: &str) -> (String, bool, bool) {
 ///
 /// The `input_event` struct on 64-bit Linux is 24 bytes:
 /// `timeval time` (16 B) + `u16 type` + `u16 code` + `i32 value`.
-pub fn read_events(path: &str, seconds: u64) -> Result<Vec<RawEvent>, String> {
-    let mut f = fs::File::open(path).map_err(|e| {
+/// Open an input node in non-blocking mode (so a silent device cannot wedge
+/// the reader).
+fn open_nonblocking(path: &str) -> Result<fs::File, String> {
+    let f = fs::File::open(path).map_err(|e| {
         if e.kind() == std::io::ErrorKind::PermissionDenied {
-            format!("permission denied opening {path} — add your user to the 'input' group: sudo gpasswd -a $USER input (then log out/in)")
+            format!(
+                "permission denied opening {path} — add your user to the 'input' group: sudo gpasswd -a $USER input (then log out/in)"
+            )
         } else {
             format!("open {path}: {e}")
         }
     })?;
-    let start = std::time::Instant::now();
+    #[cfg(unix)]
+    unsafe {
+        use std::os::unix::io::AsRawFd;
+        let fd = f.as_raw_fd();
+        let flags = libc::fcntl(fd, libc::F_GETFL);
+        if flags >= 0 {
+            libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK);
+        }
+    }
+    Ok(f)
+}
+
+/// Read raw events from a node for `seconds` (non-blocking, returns early).
+///
+/// The `input_event` struct on 64-bit Linux is 24 bytes:
+/// `timeval time` (16 B) + `u16 type` + `u16 code` + `i32 value`.
+pub fn read_events(path: &str, seconds: u64) -> Result<Vec<RawEvent>, String> {
+    let mut f = open_nonblocking(path)?;
+    let start = Instant::now();
     let mut buf = [0u8; 24 * 64];
     let mut out = Vec::new();
     while start.elapsed().as_secs() < seconds {
         let n = match f.read(&mut buf) {
             Ok(n) => n,
-            Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => continue,
+            Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                std::thread::sleep(Duration::from_millis(10));
+                continue;
+            }
             Err(e) => return Err(format!("read {path}: {e}")),
         };
         if n == 0 {
@@ -111,12 +152,37 @@ pub fn read_events(path: &str, seconds: u64) -> Result<Vec<RawEvent>, String> {
             let kind = u16::from_le_bytes([chunk[16], chunk[17]]);
             let code = u16::from_le_bytes([chunk[18], chunk[19]]);
             let value = i32::from_le_bytes([chunk[20], chunk[21], chunk[22], chunk[23]]);
-            // The kernel appends a 4-byte padding word in some layouts; the
-            // 24-byte stride above matches the 64-bit ABI used by Linux.
             out.push(RawEvent { kind, code, value });
         }
     }
     Ok(out)
+}
+
+/// Read from several nodes at the same time, tagging every event with the
+/// node it came from. Nodes that cannot be opened are skipped silently.
+pub fn read_events_multi(paths: &[String], seconds: u64) -> Vec<(String, RawEvent)> {
+    use std::sync::mpsc;
+    let (tx, rx) = mpsc::channel::<(String, RawEvent)>();
+    let out = std::thread::scope(|scope| {
+        for p in paths {
+            let tx = tx.clone();
+            let p = p.clone();
+            scope.spawn(move || {
+                if let Ok(evs) = read_events(&p, seconds) {
+                    for e in evs {
+                        let _ = tx.send((p.clone(), e));
+                    }
+                }
+            });
+        }
+        drop(tx);
+        let mut out = Vec::new();
+        for (p, e) in rx {
+            out.push((p, e));
+        }
+        out
+    });
+    out
 }
 
 /// Human label for a relative-axis code.
@@ -146,7 +212,10 @@ pub fn key_label(code: u16) -> &'static str {
         0x115 => "BTN_FORWARD",
         0x116 => "BTN_BACK",
         0x117 => "BTN_TASK",
-        _ => "BTN_?",
+        113 => "MUTE (knob press)",
+        114 => "VOLUME DOWN (knob turn)",
+        115 => "VOLUME UP (knob turn)",
+        _ => "KEY_?",
     }
 }
 
@@ -167,8 +236,23 @@ pub fn summarise(events: &[RawEvent]) -> KnobSummary {
     let mut s = KnobSummary::default();
     for e in events {
         match (e.kind, e.code) {
-            (1, code) => {
+            (1, KNOB_TURN_UP) => {
                 if e.value == 1 {
+                    s.right += 1; // turn towards volume up
+                }
+            }
+            (1, KNOB_TURN_DOWN) => {
+                if e.value == 1 {
+                    s.left += 1; // turn towards volume down
+                }
+            }
+            (1, KNOB_PRESS) => {
+                if e.value == 1 {
+                    s.presses += 1;
+                }
+            }
+            (1, code) => {
+                if e.value == 1 && code >= 0x110 && code <= 0x117 {
                     s.presses += 1;
                 }
                 let l = key_label(code);
@@ -212,7 +296,24 @@ mod tests {
     #[test]
     fn knob_device_detection() {
         assert!(is_knob_device("ROYUAN Gaming Keyboard Mouse"));
-        assert!(!is_knob_device("ROYUAN Gaming Keyboard"));
+        assert!(is_knob_device("ROYUAN Gaming Keyboard Consumer Control"));
+        assert!(is_knob_device("ROYUAN Gaming Keyboard"));
+        assert!(!is_knob_device("SEMICCHIP USB Mouse"));
+    }
+
+    #[test]
+    fn consumer_codes_map_to_knob() {
+        let ev = vec![
+            RawEvent { kind: 1, code: KNOB_TURN_UP, value: 1 },
+            RawEvent { kind: 1, code: KNOB_TURN_UP, value: 0 },
+            RawEvent { kind: 1, code: KNOB_TURN_DOWN, value: 1 },
+            RawEvent { kind: 1, code: KNOB_PRESS, value: 1 },
+            RawEvent { kind: 1, code: 30, value: 1 }, // a normal keypress
+        ];
+        let s = summarise(&ev);
+        assert_eq!(s.right, 1);
+        assert_eq!(s.left, 1);
+        assert_eq!(s.presses, 1);
     }
 
     #[test]

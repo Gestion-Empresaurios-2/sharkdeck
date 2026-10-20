@@ -3561,7 +3561,7 @@ dependencies = [
 
 [[package]]
 name = "sharkdeck"
-version = "0.2.7"
+version = "0.2.8"
 dependencies = [
  "base64 0.22.1",
  "chrono",
@@ -3577,13 +3577,14 @@ dependencies = [
 
 [[package]]
 name = "sharkdeck-core"
-version = "0.2.7"
+version = "0.2.8"
 dependencies = [
  "base64 0.22.1",
  "chrono",
  "gif 0.13.3",
  "hidapi",
  "image",
+ "libc",
  "serde",
  "serde_json",
 ]

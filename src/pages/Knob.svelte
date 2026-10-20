@@ -31,6 +31,8 @@
   let knobNode = $state<api.InputDevice | null>(null);
   let knobSummary = $state<api.KnobSummary | null>(null);
   let knobError = $state('');
+  let knobMode = $state('');
+  let knobRaw = $state<string[]>([]);
   let listening = $state(false);
 
   async function loadKnob() {
@@ -45,9 +47,13 @@
   async function listenKnob() {
     listening = true;
     knobError = '';
+    knobRaw = [];
     try {
       const r = await api.knobEvents(5);
       knobSummary = r.summary;
+      knobMode = r.mode ?? 'evdev';
+      knobRaw = r.hidraw ?? [];
+      if (r.note) knobError = r.note;
     } catch (e) {
       knobError = errText(e);
     } finally {
@@ -222,6 +228,15 @@
         </div>
         <p class="hint">Axes seen: {knobSummary.axes.join(', ') || '—'}</p>
       {/if}
+      {#if knobMode}
+        <p class="hint">
+          Source: <span class="mono">{knobMode}</span>{#if knobMode === 'hidraw'}
+          — raw HID capture (no 'input' group needed; decode pending){/if}
+        </p>
+      {/if}
+      {#if knobRaw.length}
+        <pre class="mono raw-log">{knobRaw.join('\n')}</pre>
+      {/if}
     {:else}
       <p class="hint">No knob input node found on this machine.</p>
     {/if}
@@ -293,5 +308,18 @@
   }
   .err-text {
     color: var(--err);
+  }
+
+  .raw-log {
+    margin: 8px 0 0;
+    padding: 10px;
+    background: var(--surface-2);
+    border-radius: 8px;
+    font-size: 11px;
+    line-height: 1.5;
+    max-height: 140px;
+    overflow: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
   }
 </style>

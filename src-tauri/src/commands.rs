@@ -114,27 +114,82 @@ pub fn knob_devices() -> Result<serde_json::Value, String> {
 
 /// Listen to the keyboard's native knob for `seconds` and summarise the
 /// movement (turn left/right/up/down, wheel, presses).
+///
+/// Preferred source is the evdev node the kernel creates for the knob
+/// ("ROYUAN Gaming Keyboard Mouse"). That node needs `input`-group access; when
+/// it is not permitted we fall back to capturing the raw HID stream of the
+/// vendor interface so knob activity is still observable.
 #[tauri::command]
 pub fn knob_events(seconds: Option<u32>) -> Result<serde_json::Value, String> {
     let secs = seconds.unwrap_or(5).clamp(1, 60);
     let devices = sharkdeck_core::events::list_devices();
-    let Some(node) = devices
+    let node = devices
         .iter()
         .find(|d| sharkdeck_core::events::is_knob_device(&d.name))
-    else {
+        .cloned();
+
+    if let Some(node) = node {
+        match sharkdeck_core::events::read_events(&node.path, secs as u64) {
+            Ok(raw) => {
+                let summary = sharkdeck_core::events::summarise(&raw);
+                return Ok(serde_json::json!({
+                    "device": node,
+                    "summary": summary,
+                    "events": raw.len(),
+                    "raw": raw,
+                    "mode": "evdev",
+                    "hidraw": Vec::<String>::new(),
+                }));
+            }
+            Err(e) => {
+                let hidraw = capture_hidraw(secs as u64);
+                return Ok(serde_json::json!({
+                    "device": node,
+                    "summary": serde_json::Value::Null,
+                    "events": 0,
+                    "raw": Vec::<serde_json::Value>::new(),
+                    "mode": "hidraw",
+                    "note": e,
+                    "hidraw": hidraw,
+                }));
+            }
+        }
+    }
+
+    let hidraw = capture_hidraw(secs as u64);
+    if hidraw.is_empty() {
         return Err(
             "no knob input node found (the keyboard exposes the knob as a mouse-like device)"
                 .into(),
         );
-    };
-    let raw = sharkdeck_core::events::read_events(&node.path, secs as u64)?;
-    let summary = sharkdeck_core::events::summarise(&raw);
+    }
     Ok(serde_json::json!({
-        "device": node,
-        "summary": summary,
-        "events": raw.len(),
-        "raw": raw,
+        "device": {"path": "/dev/hidraw (vendor interface)", "name": "ROYUAN vendor interface (raw)", "has_rel": true, "has_keys": true},
+        "summary": serde_json::Value::Null,
+        "events": 0,
+        "raw": Vec::<serde_json::Value>::new(),
+        "mode": "hidraw",
+        "hidraw": hidraw,
     }))
+}
+
+/// Raw HID capture of the vendor interface (page 0xFFFF, usage 0x0001).
+fn capture_hidraw(secs: u64) -> Vec<String> {
+    let mut out = Vec::new();
+    if let Ok(cands) = sharkdeck_core::hid::find_candidates() {
+        for c in cands
+            .iter()
+            .filter(|c| c.usage_page == 0xFFFF && c.usage == 0x0001)
+        {
+            if let Ok(evs) = sharkdeck_core::hid::read_events(&c.path, secs) {
+                for (ms, bytes) in evs {
+                    let hex: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
+                    out.push(format!("+{ms}ms {hex}"));
+                }
+            }
+        }
+    }
+    out
 }
 
 /// Live desk + device telemetry for on-panel widgets (battery, CPU, RAM,

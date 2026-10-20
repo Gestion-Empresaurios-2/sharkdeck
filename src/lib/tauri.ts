@@ -203,7 +203,14 @@ export const knobDevices = () =>
 
 /** Listen to the native knob for `seconds` and summarise the movement. */
 export const knobEvents = (seconds = 5) =>
-  invoke<{ device: InputDevice; summary: KnobSummary; events: number }>('knob_events', {
+  invoke<{
+    device: InputDevice;
+    summary: KnobSummary | null;
+    events: number;
+    mode?: 'evdev' | 'hidraw';
+    note?: string;
+    hidraw?: string[];
+  }>('knob_events', {
     seconds,
   });
 

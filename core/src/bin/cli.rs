@@ -107,6 +107,7 @@ fn run(cmd: &str, args: &[String]) -> i32 {
         "opdump" => cmd_opdump(),
         "opprobe" => cmd_opprobe(args),
         "opfull" => cmd_opfull(args),
+        "knob-events" => cmd_knob_events(args),
         "settings-backup" => cmd_settings_backup(args),
         "macro-get" => {
             cmd_macro_get(args.first().and_then(|s| s.parse().ok()).unwrap_or(0))
@@ -522,6 +523,57 @@ fn cmd_settings_backup(args: &[String]) -> i32 {
 fn b64(b: &[u8]) -> String {
     use base64::Engine;
     base64::engine::general_purpose::STANDARD.encode(b)
+}
+
+fn cmd_knob_events(args: &[String]) -> i32 {
+    let secs: u64 = args
+        .first()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(8);
+    let devices = sharkdeck_core::events::list_devices();
+    for d in &devices {
+        let mark = if sharkdeck_core::events::is_knob_device(&d.name) {
+            "  <-- KNOB"
+        } else {
+            ""
+        };
+        println!(
+            "{}  {:<42} rel={} keys={}{}",
+            d.path, d.name, d.has_rel, d.has_keys, mark
+        );
+    }
+    let Some(node) = devices
+        .iter()
+        .find(|d| sharkdeck_core::events::is_knob_device(&d.name))
+    else {
+        println!("no knob node found");
+        return 1;
+    };
+    println!("listening {} for {secs}s — turn and press the knob now", node.path);
+    match sharkdeck_core::events::read_events(&node.path, secs) {
+        Ok(ev) => {
+            for e in &ev {
+                let label = if e.kind == 2 {
+                    sharkdeck_core::events::rel_label(e.code)
+                } else if e.kind == 1 {
+                    sharkdeck_core::events::key_label(e.code)
+                } else {
+                    "EV_?"
+                };
+                println!("  kind={} {label} value={}", e.kind, e.value);
+            }
+            let s = sharkdeck_core::events::summarise(&ev);
+            println!(
+                "summary: left={} right={} up={} down={} wheel={} presses={} axes={:?}",
+                s.left, s.right, s.up, s.down, s.wheel, s.presses, s.axes
+            );
+            0
+        }
+        Err(e) => {
+            eprintln!("knob-events: {e}");
+            1
+        }
+    }
 }
 
 fn cmd_opfull(args: &[String]) -> i32 {

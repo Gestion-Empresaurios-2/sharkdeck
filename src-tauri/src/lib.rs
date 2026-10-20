@@ -46,6 +46,8 @@ pub fn run() {
             commands::screen_cartridge_estimate,
             commands::battery_probe,
             commands::host_info,
+            commands::knob_devices,
+            commands::knob_events,
             commands::pick_open_image,
             commands::pick_open_json,
             commands::pick_save_file,

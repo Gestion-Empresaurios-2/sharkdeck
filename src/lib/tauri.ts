@@ -178,3 +178,31 @@ export const settingsBackup = (path: string) => invoke<string>('settings_backup'
 
 /** Restore a settings snapshot; only differing slots are written. */
 export const settingsRestore = (path: string) => invoke<string>('settings_restore', { path });
+
+/** Kernel input nodes (the K86 exposes its knob as a mouse-like device). */
+export type InputDevice = {
+  path: string;
+  name: string;
+  has_rel: boolean;
+  has_keys: boolean;
+};
+
+/** Summary of a knob listening window. */
+export type KnobSummary = {
+  left: number;
+  right: number;
+  up: number;
+  down: number;
+  presses: number;
+  wheel: number;
+  axes: string[];
+};
+
+export const knobDevices = () =>
+  invoke<{ devices: InputDevice[]; knob: InputDevice | null }>('knob_devices');
+
+/** Listen to the native knob for `seconds` and summarise the movement. */
+export const knobEvents = (seconds = 5) =>
+  invoke<{ device: InputDevice; summary: KnobSummary; events: number }>('knob_events', {
+    seconds,
+  });

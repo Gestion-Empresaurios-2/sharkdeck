@@ -414,7 +414,7 @@
         <input type="checkbox" bind:checked={cartAnchor} />
         re-anchor while connected
       </label>
-      <button class="btn primary" style="width: 100%" disabled={busy || !store.device} onclick={() => void pushCartridge()}>
+      <button class="btn tint" style="width: 100%" disabled={busy || !store.device} onclick={() => void pushCartridge()}>
         {#if busy}<span class="spinner"></span>{/if}
         Load cartridge
       </button>

@@ -16,6 +16,46 @@ pub fn battery_probe(app: State<AppState>) -> Result<Option<u8>, String> {
     kb.battery_probe()
 }
 
+/// List the kernel input nodes so the UI can show which device the knob
+/// lives on (and whether we may read it).
+#[tauri::command]
+pub fn knob_devices() -> Result<serde_json::Value, String> {
+    let devices = sharkdeck_core::events::list_devices();
+    let knob = devices
+        .iter()
+        .find(|d| sharkdeck_core::events::is_knob_device(&d.name))
+        .cloned();
+    Ok(serde_json::json!({
+        "devices": devices,
+        "knob": knob,
+    }))
+}
+
+/// Listen to the keyboard's native knob for `seconds` and summarise the
+/// movement (turn left/right/up/down, wheel, presses).
+#[tauri::command]
+pub fn knob_events(seconds: Option<u32>) -> Result<serde_json::Value, String> {
+    let secs = seconds.unwrap_or(5).clamp(1, 60);
+    let devices = sharkdeck_core::events::list_devices();
+    let Some(node) = devices
+        .iter()
+        .find(|d| sharkdeck_core::events::is_knob_device(&d.name))
+    else {
+        return Err(
+            "no knob input node found (the keyboard exposes the knob as a mouse-like device)"
+                .into(),
+        );
+    };
+    let raw = sharkdeck_core::events::read_events(&node.path, secs as u64)?;
+    let summary = sharkdeck_core::events::summarise(&raw);
+    Ok(serde_json::json!({
+        "device": node,
+        "summary": summary,
+        "events": raw.len(),
+        "raw": raw,
+    }))
+}
+
 /// Live desk + device telemetry for on-panel widgets (battery, CPU, RAM,
 /// uptime, host name) plus the keyboard's current state.
 #[tauri::command]

@@ -45,7 +45,8 @@ function initTheme(): Theme {
   } catch {
     /* storage unavailable */
   }
-  return 'dark';
+  // Notion light is the default look of the app.
+  return 'light';
 }
 
 export const store = $state({

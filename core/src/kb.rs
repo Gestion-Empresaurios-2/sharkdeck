@@ -168,7 +168,34 @@ impl Keyboard {
 
     /// Generic query: send GET request (bit7 checksum added), retry until the
     /// reply's first payload byte echoes the requested opcode.
+    /// Opcodes that erase flash, reset the board, or jump into the
+    /// bootloader/display-chip flashing paths. They are refused at the
+    /// transport layer so no UI, CLI or future code path can send them.
+    pub const DANGEROUS_OPS: [u8; 10] = [
+        0xAC, // flash-chip erase (~55 s, wipes everything)
+        0x2C, // yc500 display erase
+        0x7F, // USB boot entry (erases keymap + switch settings)
+        0x30, // display-chip boot/flash path
+        0xB0, // display-chip flash (alternative)
+        0xB1, // display-chip flash (alternative)
+        0x01, // factory reset (variant)
+        0x02, // factory reset
+        0x1C, // factory reset (variant)
+        0x1E, // factory reset (variant)
+    ];
+
+    /// Refuse a dangerous opcode before it reaches the wire.
+    pub fn assert_safe_op(op: u8) -> Result<(), String> {
+        if Self::DANGEROUS_OPS.contains(&op) {
+            return Err(format!(
+                "opcode {op:02X} is destructive (erase/reset/boot) and is blocked by SharkDeck"
+            ));
+        }
+        Ok(())
+    }
+
     pub fn query(&self, op: u8, args: &[u8], retries: usize, wait_ms: u64) -> Result<Payload, String> {
+        Self::assert_safe_op(op)?;
         let req = cmd_bit7(op, args);
         let mut wire = [0u8; FEATURE_LEN];
         wire[1..].copy_from_slice(&req);
@@ -198,6 +225,7 @@ impl Keyboard {
 
     /// Raw write without read-back (SET, bit7 checksum).
     pub fn send(&self, payload: Payload) -> Result<(), String> {
+        Self::assert_safe_op(payload[0])?;
         let mut wire = [0u8; FEATURE_LEN];
         wire[1..].copy_from_slice(&payload);
         self.api.with(&self.path, |dev| {
@@ -335,6 +363,7 @@ impl Keyboard {
     }
 
     fn query_raw(&self, op: u8, args: &[u8], wait_ms: u64) -> Result<Payload, String> {
+        Self::assert_safe_op(op)?;
         let req = cmd_bit7(op, args);
         let mut wire = [0u8; FEATURE_LEN];
         wire[1..].copy_from_slice(&req);

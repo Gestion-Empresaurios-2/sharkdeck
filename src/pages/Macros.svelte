@@ -245,7 +245,7 @@
           <span class="hint">ms</span>
         </div>
       {/if}
-      <button class="btn primary" style="margin-top:14px; width:100%" onclick={addStep}>
+      <button class="btn tint" style="margin-top:14px; width:100%" onclick={addStep}>
         Add step
       </button>
       <p class="hint" style="margin-top:12px">

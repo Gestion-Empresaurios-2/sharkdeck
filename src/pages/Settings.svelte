@@ -201,7 +201,7 @@
             {#if updBusy}<span class="spinner"></span>{/if} Check for updates
           </button>
           {#if updateInfo}
-            <button class="btn primary" onclick={doInstallUpdate} disabled={updBusy}>
+            <button class="btn tint" onclick={doInstallUpdate} disabled={updBusy}>
               {dlPct >= 0 ? `Downloading ${Math.round(dlPct * 100)}%` : 'Install & restart'}
             </button>
           {/if}
@@ -284,7 +284,7 @@
           <div class="kv">
             <span class="k">power_save</span><span class="v">{opts.power_save}</span>
           </div>
-          <button class="btn primary" style="margin-top:14px" onclick={saveOpts} disabled={busy === 'opts'}>
+          <button class="btn tint" style="margin-top:14px" onclick={saveOpts} disabled={busy === 'opts'}>
             {#if busy === 'opts'}<span class="spinner"></span>{/if} Write options
           </button>
         {:else}

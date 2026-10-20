@@ -194,7 +194,7 @@
         {#if preview}
           <div class="row" style="justify-content:center; margin-top:12px">
             <button
-              class="btn primary"
+              class="btn tint"
               onclick={() => {
                 if (!connected()) return toast('err', 'Probe the device first');
                 api
@@ -280,7 +280,7 @@
           <input type="number" min={1} max={60} bind:value={clockFrames} style="width:64px" />
           <input type="color" bind:value={clockFg} />
           <input type="color" bind:value={clockBg} />
-          <button class="btn primary" onclick={clockPush} disabled={busy === 'clock'}>
+          <button class="btn tint" onclick={clockPush} disabled={busy === 'clock'}>
             {#if busy === 'clock'}<span class="spinner"></span>{/if}
             Upload clock
           </button>

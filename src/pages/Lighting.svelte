@@ -257,7 +257,7 @@
           <button class="btn primary" onclick={() => apply(false)} disabled={busy}>
             Main RGB
           </button>
-          <button class="btn primary" onclick={() => apply(true)} disabled={busy}>
+          <button class="btn tint" onclick={() => apply(true)} disabled={busy}>
             Side strips
           </button>
           <button class="btn" onclick={applyAll} disabled={busy}>All</button>

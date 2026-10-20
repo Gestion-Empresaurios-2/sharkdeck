@@ -8,6 +8,7 @@
   } from '../lib/types';
   import type { Entry4 } from '../lib/types';
   import BindingEditor from '../components/BindingEditor.svelte';
+  import { onMount } from 'svelte';
 
   // Hardware-verified on K86 fw 1.19 (read-back of the factory layer):
   // turn-left = slot 96 (consumer 0xEA vol-down), turn-right = slot 97
@@ -24,6 +25,37 @@
   let entries = $state<Record<number, Entry4 | null>>({ 96: null, 97: null, 78: null });
   let editing = $state<{ slot: number; entry: Entry4 } | null>(null);
   let loading = $state(false);
+
+  // Native knob: the firmware exposes the knob as a mouse-like HID device,
+  // so the kernel gives us a relative-axis input node we can listen to.
+  let knobNode = $state<api.InputDevice | null>(null);
+  let knobSummary = $state<api.KnobSummary | null>(null);
+  let knobError = $state('');
+  let listening = $state(false);
+
+  async function loadKnob() {
+    try {
+      const r = await api.knobDevices();
+      knobNode = r.knob;
+    } catch (e) {
+      knobError = errText(e);
+    }
+  }
+
+  async function listenKnob() {
+    listening = true;
+    knobError = '';
+    try {
+      const r = await api.knobEvents(5);
+      knobSummary = r.summary;
+    } catch (e) {
+      knobError = errText(e);
+    } finally {
+      listening = false;
+    }
+  }
+
+  onMount(loadKnob);
 
   // extra candidate slots that appear in real firmware dumps
   const EXTRA_SLOTS = [88, 89, 90, 91, 92, 93, 94, 95, 99, 100, 101, 102, 103];
@@ -168,6 +200,37 @@
   {/if}
 
   <div class="panel">
+    <h3>Native knob</h3>
+    {#if knobNode}
+      <p class="hint">
+        The keyboard's own firmware reports the knob as a mouse-like HID device — the kernel
+        exposes it as
+        <span class="mono">{knobNode.path}</span> ({knobNode.name}). Turn or press the knob
+        while listening to see its raw movement.
+      </p>
+      <div class="row" style="margin: 10px 0">
+        <button class="btn" onclick={listenKnob} disabled={listening}>
+          {listening ? 'Listening…' : 'Listen 5 s'}
+        </button>
+      </div>
+      {#if knobSummary}
+        <div class="kv-grid">
+          <div class="kv"><span>Turn left</span><b>{knobSummary.left}</b></div>
+          <div class="kv"><span>Turn right</span><b>{knobSummary.right}</b></div>
+          <div class="kv"><span>Wheel</span><b>{knobSummary.wheel}</b></div>
+          <div class="kv"><span>Presses</span><b>{knobSummary.presses}</b></div>
+        </div>
+        <p class="hint">Axes seen: {knobSummary.axes.join(', ') || '—'}</p>
+      {/if}
+    {:else}
+      <p class="hint">No knob input node found on this machine.</p>
+    {/if}
+    {#if knobError}
+      <p class="hint err-text">{knobError}</p>
+    {/if}
+  </div>
+
+  <div class="panel">
     <h3>Why the knob can do more</h3>
     <ul class="hint">
       <li>
@@ -202,13 +265,12 @@
     width: 42px;
     height: 42px;
     border-radius: 12px;
-    background: var(--grad);
+    background: var(--blue-tint);
     display: grid;
     place-items: center;
     font-size: 18px;
-    color: #fff;
-  box-shadow: var(--elev-1);
-}
+    color: var(--blue);
+  }
   .name {
     font-weight: 650;
     font-size: 15px;
@@ -216,12 +278,20 @@
   .current {
     padding: 10px 12px;
     border-radius: 10px;
-    background: rgba(0, 0, 0, 0.25);
+    background: var(--surface-3);
     font-size: 13px;
-  box-shadow: var(--elev-1);
-}
+    color: var(--graphite);
+  }
   .editbox {
     margin-bottom: 16px;
-    border-color: rgba(91, 140, 255, 0.35);
-}
+    outline: 1px solid var(--blue);
+  }
+  .kv-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 10px;
+  }
+  .err-text {
+    color: var(--err);
+  }
 </style>

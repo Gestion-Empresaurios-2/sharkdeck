@@ -145,7 +145,7 @@
 
   {#if !connected()}
     <div class="panel" style="text-align:center; padding:40px">
-      <p class="muted">No device connected — probe it in the sidebar first.</p>
+      <p class="muted">No device connected — probe it from the top bar first.</p>
     </div>
   {:else}
     <div class="panel">

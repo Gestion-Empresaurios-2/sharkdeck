@@ -10,6 +10,9 @@
   import Macros from './pages/Macros.svelte';
   import Settings from './pages/Settings.svelte';
   import { onMount } from 'svelte';
+  import { getVersion } from '@tauri-apps/api/app';
+
+  let version = $state('0.2.3');
 
   const PAGES = [
     { id: 'os', label: 'Screen OS', badge: 'LIVE' },
@@ -38,6 +41,7 @@
   const current = () => PAGES.find((p) => p.id === store.page) ?? PAGES[0];
 
   onMount(() => {
+    void getVersion().then((v) => (version = v)).catch(() => {});
     void store.probeDevice();
   });
 </script>
@@ -90,7 +94,7 @@
       </div>
       <div class="side-foot">
         FRAME OS / SHARKDECK<br />
-        v0.2.1 · 240 × 135 PANEL
+        v{version} · 240 × 135 PANEL
       </div>
     </div>
   </aside>

@@ -49,6 +49,12 @@ jobs:
             const t=JSON.parse(fs.readFileSync('package.json','utf8'));
             t.version=process.env.VERSION;
             fs.writeFileSync('package.json', JSON.stringify(t,null,2)+'\n');
+            for (const cf of ['src-tauri/Cargo.toml','core/Cargo.toml']) {
+              if (fs.existsSync(cf)) {
+                const out=fs.readFileSync(cf,'utf8').replace(/^version = \"[^"]+\"/m, 'version = \"'+process.env.VERSION+'\"');
+                fs.writeFileSync(cf, out);
+              }
+            }
           "
           echo "version: $VERSION"
 

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { store } from './lib/store.svelte';
+  import { store, applyTheme } from './lib/store.svelte';
   import Screen from './pages/Screen.svelte';
   import Knob from './pages/Knob.svelte';
   import Lighting from './pages/Lighting.svelte';
@@ -31,6 +31,7 @@
   };
 
   onMount(() => {
+    applyTheme(store.theme);
     void store.probeDevice();
   });
 </script>
@@ -70,6 +71,21 @@
         <div class="dev-path" title={store.device?.path ?? ''}>{store.device?.path ?? 'via USB cable'}</div>
         <button class="btn sm" style="margin-top:6px" disabled={store.busy} onclick={() => void store.probeDevice()}>
           {store.busy ? 'Probing…' : 'Probe device'}
+        </button>
+      </div>
+
+      <div class="theme-toggle" role="group" aria-label="Colour scheme">
+        <button class={store.theme === 'light' ? 'sel' : ''} title="Light" onclick={() => applyTheme('light')}>
+          <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+            <path d="M8 4.4a3.6 3.6 0 100 7.2 3.6 3.6 0 100-7.2z M8 0.8v1.7 M8 13.5v1.7 M0.8 8h1.7 M13.5 8h1.7 M2.9 2.9l1.2 1.2 M11.9 11.9l1.2 1.2 M13.1 2.9l-1.2 1.2 M4.1 11.9l-1.2 1.2" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" />
+          </svg>
+          Light
+        </button>
+        <button class={store.theme === 'dark' ? 'sel' : ''} title="Dark" onclick={() => applyTheme('dark')}>
+          <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+            <path d="M13.5 9.8A5.9 5.9 0 016.2 2.5 5.9 5.9 0 1013.5 9.8z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" />
+          </svg>
+          Dark
         </button>
       </div>
     </div>
@@ -172,11 +188,44 @@
   .nav-btn.sel {
     background: var(--panel-2);
     color: var(--text);
-    box-shadow: inset 3px 0 0 0 var(--accent);
     font-weight: 600;
   }
   .aside-foot {
     margin-top: auto;
+  }
+  .theme-toggle {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0;
+    margin-top: 8px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--panel-2);
+  }
+  .theme-toggle button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    padding: 7px 0;
+    border: none;
+    background: transparent;
+    color: var(--dim);
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .theme-toggle button + button {
+    border-left: 1px solid var(--border);
+  }
+  .theme-toggle button:hover {
+    background: var(--hover);
+    color: var(--text);
+  }
+  .theme-toggle button.sel {
+    background: var(--panel);
+    color: var(--text);
+    font-weight: 600;
   }
   .dev-card {
     background: var(--panel-2);
@@ -222,10 +271,6 @@
     box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18);
     max-width: 380px;
   }
-  .toast.err {
-    border-left: 3px solid var(--err);
-  }
-  .toast.ok {
-    border-left: 3px solid var(--ok);
-  }
+  .toast.err { color: #ffc9cd; }
+  .toast.ok { color: #c8ecd2; }
 </style>

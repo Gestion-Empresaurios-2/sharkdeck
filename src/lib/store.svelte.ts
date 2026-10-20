@@ -3,6 +3,17 @@ import * as api from './tauri';
 import type { DeviceInfo } from './types';
 
 type Toast = { id: number; kind: 'ok' | 'err' | 'info'; text: string };
+export type Theme = 'light' | 'dark';
+
+function initTheme(): Theme {
+  try {
+    const t = localStorage.getItem('sd-theme');
+    if (t === 'light' || t === 'dark') return t;
+  } catch {
+    /* storage unavailable */
+  }
+  return 'light';
+}
 
 export const store = $state({
   page: 'screen' as string,
@@ -10,7 +21,22 @@ export const store = $state({
   options: null,
   busy: false as boolean,
   toasts: [] as Toast[],
+  theme: initTheme() as Theme,
 });
+
+export function applyTheme(t: Theme) {
+  store.theme = t;
+  document.documentElement.dataset.theme = t;
+  try {
+    localStorage.setItem('sd-theme', t);
+  } catch {
+    /* storage unavailable */
+  }
+}
+
+export function toggleTheme() {
+  applyTheme(store.theme === 'dark' ? 'light' : 'dark');
+}
 
 let nextId = 1;
 

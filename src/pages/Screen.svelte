@@ -35,6 +35,10 @@
   onMount(async () => {
     try {
       cfg = await api.configGet();
+      if (cfg) {
+        previewW = cfg.screen_width;
+        previewH = cfg.screen_height;
+      }
     } catch (e) {
       toast('err', errText(e));
     }

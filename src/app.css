@@ -1,4 +1,4 @@
-/* SharkDeck — GNOME / Yaru-flavoured design system (flat, light, no gradients) */
+/* SharkDeck — GNOME / Yaru-flavoured design system (flat, light+dark, no gradients) */
 
 :root {
   /* Adwaita-light surfaces */
@@ -28,6 +28,51 @@
 
   --font: 'Ubuntu', 'Cantarell', -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --mono: 'Ubuntu Mono', 'SF Mono', 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+
+  /* derived surfaces */
+  --field: #ffffff;
+  --hairline: rgba(0, 0, 0, 0.06);
+  --spinner-track: rgba(0, 0, 0, 0.15);
+  --active-press: rgba(0, 0, 0, 0.09);
+  --scroll-thumb: rgba(0, 0, 0, 0.2);
+  --scroll-thumb-hover: rgba(0, 0, 0, 0.32);
+
+  /* aliases used by page styles */
+  --dim: var(--text-dim);
+  --hover: var(--panel-hover);
+
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  /* Adwaita-dark surfaces */
+  --bg: #1d1e20;
+  --panel: #26272a;
+  --panel-2: #2c2d30;
+  --panel-hover: rgba(255, 255, 255, 0.07);
+  --border: rgba(255, 255, 255, 0.1);
+  --border-strong: rgba(255, 255, 255, 0.16);
+
+  --text: #f3f3f3;
+  --text-dim: rgba(255, 255, 255, 0.6);
+  --text-faint: rgba(255, 255, 255, 0.4);
+
+  --accent-soft: rgba(233, 84, 32, 0.2);
+
+  --ok: #4bc46f;
+  --warn: #e19e31;
+  --err: #ef4451;
+
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.45), 0 2px 8px rgba(0, 0, 0, 0.35);
+
+  --field: #202124;
+  --hairline: rgba(255, 255, 255, 0.08);
+  --spinner-track: rgba(255, 255, 255, 0.18);
+  --active-press: rgba(255, 255, 255, 0.09);
+  --scroll-thumb: rgba(255, 255, 255, 0.2);
+  --scroll-thumb-hover: rgba(255, 255, 255, 0.32);
+
+  color-scheme: dark;
 }
 
 * {
@@ -74,7 +119,7 @@ button {
 select,
 input[type='number'],
 input[type='text'] {
-  background: #fff;
+  background: var(--field);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
   padding: 7px 9px;
@@ -90,7 +135,7 @@ input:focus {
 
 select option,
 select optgroup {
-  background: #fff;
+  background: var(--field);
   color: var(--text);
 }
 
@@ -119,13 +164,13 @@ input[type='checkbox'] {
   height: 9px;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.2);
+  background: var(--scroll-thumb);
   border-radius: 8px;
   border: 2px solid transparent;
   background-clip: content-box;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 0, 0, 0.32);
+  background: var(--scroll-thumb-hover);
   background-clip: content-box;
 }
 ::-webkit-scrollbar-track {
@@ -217,7 +262,7 @@ input[type='checkbox'] {
 }
 .btn:active {
   transform: scale(0.985);
-  background: rgba(0, 0, 0, 0.09);
+  background: var(--active-press);
 }
 .btn:disabled {
   opacity: 0.5;
@@ -309,7 +354,7 @@ input[type='checkbox'] {
   display: flex;
   justify-content: space-between;
   padding: 7px 0;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  border-bottom: 1px solid var(--hairline);
   font-size: 13px;
 }
 .kv:last-child {
@@ -333,11 +378,12 @@ input[type='checkbox'] {
 .spinner {
   width: 14px;
   height: 14px;
-  border: 2px solid rgba(0, 0, 0, 0.15);
+  border: 2px solid var(--spinner-track);
   border-top-color: var(--accent);
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
 }
+
 .btn.primary .spinner {
   border-color: rgba(255, 255, 255, 0.35);
   border-top-color: #fff;

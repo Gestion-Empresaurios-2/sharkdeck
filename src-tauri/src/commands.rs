@@ -80,7 +80,18 @@ pub fn load_config(path: Option<std::path::PathBuf>) -> AppConfig {
 
 #[tauri::command]
 pub fn probe(app: tauri::State<'_, AppState>) -> Result<Option<serde_json::Value>, String> {
-    let fresh = Keyboard::open()?;
+    // Cold-start races (webview booting while hidraw settles) can make the
+    // first enumeration come up empty; retry briefly before giving up.
+    let mut fresh = Keyboard::open()?;
+    if fresh.is_none() {
+        for _ in 0..2 {
+            std::thread::sleep(std::time::Duration::from_millis(700));
+            fresh = Keyboard::open()?;
+            if fresh.is_some() {
+                break;
+            }
+        }
+    }
     let mut guard = app.kb.lock().unwrap();
     match fresh {
         Some(kb) => {

@@ -99,6 +99,7 @@ fn run(cmd: &str, args: &[String]) -> i32 {
         "screen-pattern" => cmd_pattern(args),
         "screen-img" => cmd_image(args),
         "screen-clock" => cmd_clock(args),
+        "cartridge" => cmd_cartridge(args),
         "display" => cmd_display(),
         "display-probe" => cmd_display_probe(),
         "battery" => cmd_battery(),
@@ -427,8 +428,39 @@ fn cmd_clock(args: &[String]) -> i32 {
     })
 }
 
-fn cmd_display() -> i32 {
+/// Push a self-running cartridge: N clock frames that the keyboard loops on
+/// its own afterwards (no host needed). Used to find the device's real frame
+/// budget and to time the transfer.
+fn cmd_cartridge(args: &[String]) -> i32 {
+    let n: usize = arg_flag(args, "--frames")
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(60)
+        .clamp(1, 255);
+    let dwell: u8 = arg_flag(args, "--dwell")
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(100)
+        .clamp(1, 255);
+    let (w, h) = parse_size(&arg_flag(args, "--size").unwrap_or_else(|| "240x135".into()));
     with_kb(|kb| {
+        let frames = scr::clock_frames_from(n, true, (230, 233, 242), (10, 12, 18), w, h, 0);
+        let (bytes565, delays) = scr::frames_to_565(&frames, PixelOrder::Column);
+        let refs: Vec<(&[u8], u8)> = bytes565
+            .iter()
+            .map(|b| b.as_slice())
+            .zip(delays.iter().copied())
+            .collect();
+        let t0 = std::time::Instant::now();
+        kb.screen_write_animation(&refs, w as u16, h as u16)?;
+        let ms = t0.elapsed().as_millis();
+        Ok(format!(
+            "cartridge: {n} frames x {dwell}cs -> {w}x{h}, uploaded in {ms} ms ({:.0} ms/frame), window {} s",
+            ms as f64 / n as f64,
+            (n as f64 * dwell as f64 / 100.0).round()
+        ))
+    })
+}
+
+fn cmd_display() -> i32 {    with_kb(|kb| {
         let r = kb.display_params(8);
         match r {
             Ok(Some((w, h, b))) => Ok(format!("display: {w}x{h} brightness {b}")),

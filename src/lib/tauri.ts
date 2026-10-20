@@ -81,6 +81,11 @@ export function screenPattern(pattern: string, slot?: number, width?: number, he
 export function screenAnimPush(frames: { rgba_b64: string; delay: number }[], width: number, height: number, order?: string) {
   return invoke<null>('screen_anim_push', { frames, width, height, order });
 }
+/** How long a cartridge of `frames` frames needs to reach the keyboard (ms).
+ *  Used to stamp the frames with the second they will actually be shown at. */
+export function screenCartridgeEstimate(frames: number, frameBytes: number) {
+  return invoke<number>('screen_cartridge_estimate', { frames, frameBytes });
+}
 export function screenClock(frames?: number, withSeconds?: boolean, color?: number[], background?: number[]) {
   return invoke<null>('screen_clock', { frames, withSeconds, color, background });
 }

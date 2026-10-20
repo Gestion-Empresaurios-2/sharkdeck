@@ -23,6 +23,21 @@
 
   let version = $state('0.2.3');
 
+  // Native-style window drag. The webview's own `data-tauri-drag-region`
+  // handles the markup, but we also drive the drag ourselves so the bar always
+  // moves the window (the bare attribute only reacts to direct hits on the
+  // element, not on the text inside it).
+  function dragBar(e: MouseEvent) {
+    if (!win || e.button !== 0) return;
+    // double click = maximise (handled by Tauri's own drag script)
+    if (e.detail > 1) return;
+    const t = e.target as HTMLElement | null;
+    if (t?.closest('button, a, input, select, textarea, .win-controls, .accent-swatches, .status, .segmented')) return;
+    e.preventDefault();
+    e.stopPropagation();
+    void win.startDragging().catch(() => {});
+  }
+
   const PAGES = [
     { id: 'os', label: 'Screen OS', badge: 'LIVE' },
     { id: 'screen', label: 'Screen' },
@@ -110,12 +125,12 @@
   </aside>
 
   <div class="shell">
-    <header class="topbar" data-tauri-drag-region>
+    <header class="topbar" data-tauri-drag-region="deep" onmousedown={dragBar}>
       <div class="dot-grip" aria-hidden="true"><i></i><i></i><i></i></div>
-      <div class="crumb" data-tauri-drag-region>
+      <div class="crumb" data-tauri-drag-region="deep">
         Workspace<span class="slash">/</span><strong>{current().label}</strong>
       </div>
-      <span class="topbar-title" data-tauri-drag-region>SharkDeck · Attack Shark K86</span>
+      <span class="topbar-title" data-tauri-drag-region="deep">SharkDeck · Attack Shark K86</span>
       <div class="topbar-actions">
         <div class="accent-swatches" role="group" aria-label="Accent colour">
           {#each ACCENTS as a (a.key)}

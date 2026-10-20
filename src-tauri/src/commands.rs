@@ -113,6 +113,9 @@ pub struct AppState {
     /// Duration of the last screen push (ms) — used to time-stamp clock
     /// animations so the device starts them at the right second.
     pub last_push_ms: std::sync::atomic::AtomicU64,
+    /// How many frames the last push carried — used to extrapolate the
+    /// transfer time of a cartridge before it is built.
+    pub last_push_frames: std::sync::atomic::AtomicU64,
 }
 
 #[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
@@ -669,8 +672,8 @@ pub fn screen_anim_push(
     if frames.is_empty() {
         return Err("no frames".into());
     }
-    if frames.len() > 90 {
-        return Err("max 90 frames".into());
+    if frames.len() > 255 {
+        return Err("max 255 frames (protocol limit)".into());
     }
     let cfg = *app.config.lock().unwrap();
     let kb = kb_of(&app)?;
@@ -704,7 +707,41 @@ pub fn screen_anim_push(
         .iter()
         .map(|(b, d)| (b.as_slice(), *d))
         .collect();
-    kb.screen_write_animation(&refs, width as u16, height as u16)
+    let t0 = std::time::Instant::now();
+    kb.screen_write_animation(&refs, width as u16, height as u16)?;
+    app.last_push_ms
+        .store(t0.elapsed().as_millis() as u64, std::sync::atomic::Ordering::Relaxed);
+    app.last_push_frames
+        .store(frames.len() as u64, std::sync::atomic::Ordering::Relaxed);
+    Ok(())
+}
+
+/// How long a cartridge of `frames` frames will take to reach the keyboard.
+///
+/// The device only starts playing an animation once *every* frame has landed,
+/// so the front-end has to know the transfer time in advance: the frames are
+/// stamped with the wall-clock second they will be shown at. The estimate is
+/// extrapolated from the last real push (or from the theoretical chunk
+/// pacing) plus the handshake slack.
+#[tauri::command]
+pub fn screen_cartridge_estimate(
+    app: tauri::State<'_, AppState>,
+    frames: usize,
+    frame_bytes: usize,
+) -> u64 {
+    use std::sync::atomic::Ordering::Relaxed;
+    let measured = app.last_push_ms.load(Relaxed);
+    let last_frames = app.last_push_frames.load(Relaxed);
+    let measured_per_frame = if last_frames > 0 {
+        measured / last_frames
+    } else {
+        0
+    };
+    // 56-byte chunks, ~250µs of transfer each (plus a floor of 1ms/frame)
+    let chunks = ((frame_bytes + 55) / 56) as u64;
+    let theoretical_per_frame = (chunks * 250 / 1000).max(1);
+    let per_frame = measured_per_frame.max(theoretical_per_frame).max(1);
+    per_frame * frames as u64 + 900
 }
 
 /// File dialog via rfd; must run on the main thread (GTK). Returns the path.

@@ -9,6 +9,7 @@
     renderOsPage,
     osFrames,
     osCarouselFrames,
+    osCartridgeFrames,
     b64,
     tickOs,
     osHost,
@@ -170,6 +171,61 @@
     }
   }
 
+  /* ---- CARTRIDGE: a self-running timeline the keyboard plays on its own ----
+   *
+   * The panel is a dumb framebuffer, but its firmware plays a stored animation
+   * on its own timer with a per-frame delay. That player is the only engine
+   * the hardware has, so instead of pushing a screen again and again we
+   * compile a scene into a CARTRIDGE (frames + delays). Once it is on the
+   * keyboard it loops by itself — laptop closed, keyboard on battery. */
+
+  let cartFrames = $state(60);
+  let cartDwell = $state(100); // centiseconds per frame (100 = 1.00 s)
+  let cartPage = $state<OsPage>('lock');
+  let cartAnchor = $state(true);
+
+  const cartSeconds = $derived((cartFrames * cartDwell) / 100);
+
+  async function pushCartridge(silent = false) {
+    if (!store.device) return toast('err', 'No device connected');
+    busy = true;
+    try {
+      const count = Math.max(1, Math.min(255, Math.round(cartFrames)));
+      const delay = Math.max(1, Math.min(255, Math.round(cartDwell)));
+      // The device only starts playing once every frame has landed, so the
+      // frames are stamped with the moment the keyboard will reach frame 0.
+      const est = await api.screenCartridgeEstimate(count, W * H * 4);
+      const frames = osCartridgeFrames(
+        cartPage,
+        W,
+        H,
+        count,
+        delay,
+        Math.ceil(est / 1000),
+      );
+      await api.screenAnimPush(frames, W, H, cfg?.order);
+      if (!silent) {
+        toast('ok', `Cartridge loaded — ${count} frames, ${Math.round((count * delay) / 100)}s running on the keyboard alone`);
+      }
+    } catch (e) {
+      if (!silent) toast('err', errText(e));
+    } finally {
+      busy = false;
+    }
+  }
+
+  /* Re-anchor the cartridge before it runs out so the clock stays exact while
+     the host is connected. With the laptop off, nothing is pushed at all —
+     the keyboard keeps playing the last cartridge on its own. */
+  $effect(() => {
+    if (!cartAnchor) return;
+    const period = Math.max(10, Math.round((cartFrames * cartDwell) / 200)) * 1000;
+    const id = setInterval(() => {
+      if (store.device && !busy) void pushCartridge(true);
+    }, period);
+    return () => clearInterval(id);
+  });
+
   /* Keep the keyboard live: re-anchor the pushed animation before the
      30 frames run out, so the clock and the counters never rewind. */
   let keepLive = $state(false);
@@ -327,6 +383,52 @@
       <h3>Appearance</h3>
       <p>Every detail, down to the pixel.</p>
     </div>
+
+    <section class="insp-sec">
+      <div class="insp-title">Cartridge</div>
+      <p class="hint" style="margin: 0 0 10px">
+        The panel is a framebuffer, but its firmware plays a stored animation on its own timer.
+        A cartridge is that animation — compiled once, it loops on the keyboard forever, with the
+        laptop closed.
+      </p>
+      <label class="chk push-cycle" style="margin-bottom: 8px">
+        Screen
+        <select class="btn sm" bind:value={cartPage}>
+          {#each OS_PAGES as p (p.id)}
+            <option value={p.id}>{p.label}</option>
+          {/each}
+        </select>
+      </label>
+      <div class="row" style="gap: 8px; align-items: center; margin-bottom: 8px">
+        <label class="chk push-cycle">
+          frames
+          <input class="num" type="number" min="1" max="255" bind:value={cartFrames} />
+        </label>
+        <label class="chk push-cycle">
+          dwell
+          <input class="num" type="number" min="10" max="255" bind:value={cartDwell} />
+          cs
+        </label>
+      </div>
+      <label class="chk push-cycle" style="margin-bottom: 10px" title="Re-push the cartridge before it runs out so the clock stays exact while the app is open">
+        <input type="checkbox" bind:checked={cartAnchor} />
+        re-anchor while connected
+      </label>
+      <button class="btn primary" style="width: 100%" disabled={busy || !store.device} onclick={() => void pushCartridge()}>
+        {#if busy}<span class="spinner"></span>{/if}
+        Load cartridge
+      </button>
+      <p class="hint" style="margin-top: 8px">
+        {Math.round(cartSeconds)}s of timeline · {cartDwell}cs per frame
+        {#if cartDwell === 100}· one second per frame{/if}
+        · the device verified up to 255 frames (~4m15s of self-running clock)
+      </p>
+      <p class="hint" style="margin-top: 6px">
+        With 60 one-second frames the seconds stay exact for ever (the keyboard
+        loops them) and only the hour/minute freeze; more frames keep the whole
+        clock exact for longer.
+      </p>
+    </section>
 
     <section class="insp-sec">
       <div class="insp-title">Accent colour</div>

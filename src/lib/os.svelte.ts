@@ -881,8 +881,38 @@ export function osCarouselFrames(pages: OsPage[], w: number, h: number, dwellCen
   return out;
 }
 
-export function b64(data: Uint8ClampedArray): string {
-  let s = '';
+/** A CARTRIDGE is a self-running timeline.
+ *
+ *  The K86's display is a dumb framebuffer, but its firmware plays a stored
+ *  animation on its own timer, honouring a per-frame delay. That player is
+ *  the only "engine" the hardware has — so instead of pushing a screen over
+ *  and over, we compile a scene into a *cartridge*: the frames plus the
+ *  delay of each frame. Once the cartridge is on the keyboard it loops on
+ *  its own, forever, with the laptop closed.
+ *
+ *  `startOffsetSec` is the wall-clock moment the device will reach frame 0
+ *  (now + the upload time). Stamping the frames with it keeps the on-keyboard
+ *  clock phase-correct instead of being late by the transfer time. */
+export function osCartridgeFrames(
+  page: OsPage,
+  w: number,
+  h: number,
+  count: number,
+  delayCentis = 100,
+  startOffsetSec = 0,
+) {
+  const out: { rgba_b64: string; delay: number }[] = [];
+  const t0 = osTime.t;
+  const step = Math.max(0.01, delayCentis / 100);
+  for (let i = 0; i < count; i++) {
+    osTime.t = t0 + startOffsetSec + i * step;
+    out.push({ rgba_b64: b64(renderOsPage(page, w, h, osTime.t)), delay: delayCentis });
+  }
+  osTime.t = t0;
+  return out;
+}
+
+export function b64(data: Uint8ClampedArray): string {  let s = '';
   const chunk = 0x8000;
   for (let i = 0; i < data.length; i += chunk) {
     s += String.fromCharCode.apply(null, Array.from(data.subarray(i, i + chunk)) as unknown as number[]);

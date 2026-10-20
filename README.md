@@ -20,6 +20,17 @@ Everything the app writes to flash is **read back and verified**, with automatic
 - **Which image slot is on screen is chosen on the keyboard itself** (its own menu opens with the knob) — the app writes into slots 1–5 but cannot switch the display.
 - **Theme**: GNOME/Yaru-flat light and Adwaita-dark pair, no gradients, keyboard focus rings, `prefers-reduced-motion` respected.
 
+## Cartridges — the keyboard's own animation engine
+
+The K86's panel is a dumb RGB565 framebuffer, but its firmware **plays a stored animation on its own timer**, honouring a per-frame delay (centiseconds, max 2.55 s). That player is the only execution engine the hardware has, so SharkDeck uses it as one:
+
+- A **cartridge** is a scene compiled into *frames + per-frame delays*, uploaded once over the existing `0xA5` handshake / `0x25` chunk stream.
+- Once the cartridge is on the keyboard it **loops on its own** — the screen keeps animating and the clock keeps ticking with the laptop closed and the keyboard on battery. No host, no pushes, no daemon.
+- The frames are stamped with the wall-clock second they will be shown at (the device only starts playing once every frame has landed), so the on-keyboard clock is phase-correct instead of being late by the transfer time.
+- **Verified on hardware (fw 1.19, 240×135):** 30 / 60 / 90 / 120 / 200-frame cartridges all upload and play; 255 frames is the protocol ceiling. A 1 s dwell gives a 1-minute (60-frame) or 3m20s (200-frame) window of *fully correct* clock, at ~0.55 s per frame of upload time.
+- **Honest limit:** the hour and minute are baked pixels. A 60-frame cartridge keeps the *seconds* exact forever (the device loops them) but freezes the minute/hour at the values of the last push; a longer cartridge keeps the whole clock exact for longer. With the app open, "re-anchor while connected" re-pushes the cartridge before the window ends, so the clock is always exact.
+- The firmware has **no scripting, vector or text primitives** (and no native clock screensaver) — every pixel comes from the host, so the host stays the "engine" and the keyboard stays the "player".
+
 ## Build
 
 Requirements: Rust 1.75+, Node 18+, and on Linux the usual Tauri stack: `libwebkit2gtk-4.1-dev`, `libgtk-3-dev`, `build-essential`, `pkg-config`, plus `libhidapi-dev` (the `hidapi` crate bundles a copy, but keep headers handy for distro weirdness).

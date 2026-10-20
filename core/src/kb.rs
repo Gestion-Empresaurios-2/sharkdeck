@@ -469,15 +469,19 @@ impl Keyboard {
             let mut wire = [0u8; FEATURE_LEN];
             wire[1..].copy_from_slice(&p);
             dev.send_feature_report(&wire).map_err(|e| e.to_string())?;
-            for _ in 0..10 {
-                sleep(Duration::from_millis(70));
+            // The device can stay busy for a while after the previous
+            // animation (it is still rendering / freeing the frames), and it
+            // only answers the handshake when it is ready. Poll patiently:
+            // 30 tries x 200 ms = 6 s of grace.
+            for _ in 0..30 {
+                sleep(Duration::from_millis(200));
                 let mut out = [0u8; FEATURE_LEN];
                 let _ = dev.get_feature_report(&mut out);
                 if out[1] == OP_SCREEN_HANDSHAKE && out[2] == 1 {
                     return Ok(());
                 }
             }
-            Err("screen handshake never became ready (10 tries)".into())
+            Err("screen handshake never became ready (30 tries)".into())
         })
     }
 
@@ -545,7 +549,27 @@ impl Keyboard {
     pub fn screen_write_animation(&self, frames: &[(&[u8], u8)], width: u16, height: u16) -> Result<(), String> {
         let (first_bytes, first_delay) = frames[0];
         let len = first_bytes.len() as u32;
-        self.screen_handshake(0, frames.len() as u8, first_delay, len, 0, (width, height))?;
+        // The device answers the handshake only when it is ready; right after a
+        // previous animation it can stay busy for a while. Retry the whole
+        // handshake a few times instead of giving up on the first refusal.
+        let mut err = String::new();
+        for attempt in 0..3 {
+            match self.screen_handshake(0, frames.len() as u8, first_delay, len, 0, (width, height)) {
+                Ok(()) => {
+                    err.clear();
+                    break;
+                }
+                Err(e) => {
+                    err = e;
+                    if attempt < 2 {
+                        sleep(Duration::from_millis(2500));
+                    }
+                }
+            }
+        }
+        if !err.is_empty() {
+            return Err(err);
+        }
         for (i, (bytes, delay)) in frames.iter().enumerate() {
             self.screen_stream(bytes, i as u8, frames.len() as u8, *delay)?;
         }

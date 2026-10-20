@@ -12,7 +12,7 @@ function initTheme(): Theme {
   } catch {
     /* storage unavailable */
   }
-  return 'light';
+  return 'dark';
 }
 
 export const store = $state({

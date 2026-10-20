@@ -15,10 +15,10 @@
     cv.height = h * z;
     const ctx = cv.getContext('2d');
     if (!ctx) return;
-    // very subtle checker so size is evident on the light background
-    ctx.fillStyle = '#f3f2f1';
+    // very subtle checker so the panel size is evident on the dark canvas
+    ctx.fillStyle = '#0a0c11';
     ctx.fillRect(0, 0, cv.width, cv.height);
-    ctx.fillStyle = '#e9e8e7';
+    ctx.fillStyle = '#12161d';
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
         if ((x + y) % 2 === 0) ctx.fillRect(x * z, y * z, z, z);
@@ -71,15 +71,15 @@
     gap: 8px;
   }
   .frame {
-    background: #e9e8e7;
+    background: #0a0c11;
     border-radius: 10px;
     image-rendering: pixelated;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+    box-shadow: 0 0 0 1px var(--line, #252a33), 0 8px 24px rgba(0, 0, 0, 0.45);
     max-width: 100%;
     height: auto;
   }
   .cap {
     font-size: 11px;
-    color: var(--dim);
+    color: var(--muted, #838895);
   }
 </style>

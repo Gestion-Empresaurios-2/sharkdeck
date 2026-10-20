@@ -821,6 +821,167 @@ pub fn keymap_backup(app: tauri::State<'_, AppState>, path: String, profile: u8)
     fs::write(&path, serde_json::to_string_pretty(&doc).unwrap()).map_err(|e| e.to_string())
 }
 
+/// Full settings snapshot — the only thing that can be backed up over HID.
+///
+/// The firmware never reads its own flash out over USB (verified: no GET
+/// opcode returns firmware bytes; the boot loader is write-and-verify only),
+/// so a per-unit *firmware* image is not obtainable. Everything that IS
+/// readable is captured here: the keymap + Fn layer of all three profiles,
+/// all 50 macro slots, the option bytes and both lighting states.
+#[tauri::command]
+pub fn settings_backup(app: tauri::State<'_, AppState>, path: String) -> Result<String, String> {
+    let kb = kb_of(&app)?;
+    let info = kb.info()?;
+    let mut profiles = Vec::new();
+    for p in 0..3u8 {
+        let base = kb.keymap_layer(p)?;
+        let fns = kb.fn_layer(p)?;
+        profiles.push(serde_json::json!({
+            "index": p,
+            "base": base64_encode(&base),
+            "fn": base64_encode(&fns),
+        }));
+    }
+    let mut macros = Vec::new();
+    for s in 0..50u8 {
+        let data = kb.macro_read(s)?;
+        macros.push(serde_json::json!({
+            "slot": s,
+            "data": base64_encode(&data),
+        }));
+    }
+    let doc = serde_json::json!({
+        "format": "sharkdeck-settings",
+        "version": 1,
+        "created": chrono::Local::now().to_rfc3339(),
+        "device": {
+            "path": info.path,
+            "device_id": info.device_id,
+            "firmware": info.firmware,
+            "active_profile": info.active_profile,
+        },
+        "profiles": profiles,
+        "macros": macros,
+        "options": kb.options_get()?,
+        "lighting": { "main": kb.light(false)?, "side": kb.light(true)? },
+    });
+    fs::write(&path, serde_json::to_string_pretty(&doc).map_err(|e| e.to_string())?)
+        .map_err(|e| e.to_string())?;
+    Ok(path)
+}
+
+/// Restore a settings snapshot. Only slots that actually differ are written,
+/// and every keymap write is verified by read-back.
+#[tauri::command]
+pub fn settings_restore(app: tauri::State<'_, AppState>, path: String) -> Result<String, String> {
+    let kb = kb_of(&app)?;
+    let doc: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(&path).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())?;
+    if doc["format"].as_str() != Some("sharkdeck-settings") {
+        return Err("not a SharkDeck settings backup".into());
+    }
+    let mut report = String::new();
+
+    if let Some(profiles) = doc["profiles"].as_array() {
+        let mut slots = 0usize;
+        for p in profiles {
+            let idx = p["index"].as_u64().unwrap_or(0) as u8;
+            for (layer_flag, field) in [(false, "base"), (true, "fn")] {
+                let Some(b) = p[field].as_str() else { continue };
+                let bytes = base64_decode(b)?;
+                if bytes.len() != 512 {
+                    return Err(format!("profile {idx} {field} wrong size"));
+                }
+                let current = if layer_flag { kb.fn_layer(idx)? } else { kb.keymap_layer(idx)? };
+                for slot in 0..128u8 {
+                    let o = slot as usize * 4;
+                    if current[o..o + 4] == bytes[o..o + 4] {
+                        continue;
+                    }
+                    let entry = SlotEntry([
+                        bytes[o],
+                        bytes[o + 1],
+                        bytes[o + 2],
+                        bytes[o + 3],
+                    ]);
+                    kb.write_slot(idx, slot, entry, layer_flag)?;
+                    slots += 1;
+                }
+            }
+        }
+        report.push_str(&format!("keymap: {slots} slots written"));
+    }
+
+    if let Some(macros) = doc["macros"].as_array() {
+        let mut written = 0usize;
+        for m in macros {
+            let slot = m["slot"].as_u64().unwrap_or(0) as u8;
+            let Some(d) = m["data"].as_str() else { continue };
+            let bytes = base64_decode(d)?;
+            if bytes.len() != 256 {
+                continue;
+            }
+            let cur = kb.macro_read(slot)?;
+            if cur[..] == bytes[..] {
+                continue;
+            }
+            let mut blob = [0u8; 256];
+            blob.copy_from_slice(&bytes);
+            kb.macro_write(slot, &blob)?;
+            written += 1;
+        }
+        report.push_str(&format!(" · macros: {written} slots written"));
+    }
+
+    if let Some(o) = doc["options"].as_object() {
+        let cur = kb.options_get()?;
+        let want = KbOptions {
+            win_lock: o.get("win_lock").and_then(|v| v.as_bool()).unwrap_or(cur.win_lock),
+            mac_mode: o.get("mac_mode").and_then(|v| v.as_bool()).unwrap_or(cur.mac_mode),
+            wasd_swap: o.get("wasd_swap").and_then(|v| v.as_bool()).unwrap_or(cur.wasd_swap),
+            main_led_off: o.get("main_led_off").and_then(|v| v.as_bool()).unwrap_or(cur.main_led_off),
+            side_led_off: o.get("side_led_off").and_then(|v| v.as_bool()).unwrap_or(cur.side_led_off),
+            keyboard_mode: o.get("keyboard_mode").and_then(|v| v.as_bool()).unwrap_or(cur.keyboard_mode),
+            keyboard_lock: o.get("keyboard_lock").and_then(|v| v.as_bool()).unwrap_or(cur.keyboard_lock),
+            fn_matrix: o.get("fn_matrix").and_then(|v| v.as_u64()).unwrap_or(cur.fn_matrix as u64) as u8,
+            power_save: o.get("power_save").and_then(|v| v.as_u64()).unwrap_or(cur.power_save as u64) as u8,
+        };
+        if want != cur {
+            kb.options_set(want)?;
+            report.push_str(" · options restored");
+        }
+    }
+
+    if let Some(l) = doc["lighting"].as_object() {
+        if let Some(m) = l.get("main") {
+            if let Ok(state) = serde_json::from_value::<LightingState>(m.clone()) {
+                let cur = kb.light(false)?;
+                if state != cur {
+                    kb.light_set(false, state)?;
+                    report.push_str(" · main lighting restored");
+                }
+            }
+        }
+        if let Some(s) = l.get("side") {
+            if let Ok(state) = serde_json::from_value::<LightingState>(s.clone()) {
+                let cur = kb.light(true)?;
+                if state != cur {
+                    kb.light_set(true, state)?;
+                    report.push_str(" · side lighting restored");
+                }
+            }
+        }
+    }
+
+    Ok(if report.is_empty() {
+        "already identical — nothing written".to_string()
+    } else {
+        report
+    })
+}
+
 fn base64_encode(b: &[u8]) -> String {
     use base64::Engine;
     base64::engine::general_purpose::STANDARD.encode(b)

@@ -50,6 +50,8 @@ pub fn run() {
             commands::pick_open_json,
             commands::pick_save_file,
             commands::keymap_backup,
+            commands::settings_backup,
+            commands::settings_restore,
             commands::keymap_restore,
         ])
         .run(tauri::generate_context!())

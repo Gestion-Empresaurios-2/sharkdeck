@@ -28,7 +28,7 @@ pub struct DeviceInfo {
     pub options: KbOptions,
 }
 
-#[derive(Clone, Copy, Debug, Default, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct KbOptions {
     pub win_lock: bool,
     pub mac_mode: bool,
@@ -326,6 +326,12 @@ impl Keyboard {
     /// Raw single-shot query used by the battery probe diagnostics.
     pub fn debug_query(&self, op: u8) -> Result<Payload, String> {
         self.query_raw(op, &[], 60)
+    }
+
+    /// Read-only probe with explicit arguments, used to characterise
+    /// opcodes that no public source documents.
+    pub fn debug_query_args(&self, op: u8, args: &[u8]) -> Result<Payload, String> {
+        self.query_raw(op, args, 120)
     }
 
     fn query_raw(&self, op: u8, args: &[u8], wait_ms: u64) -> Result<Payload, String> {

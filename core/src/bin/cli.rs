@@ -103,6 +103,10 @@ fn run(cmd: &str, args: &[String]) -> i32 {
         "display" => cmd_display(),
         "display-probe" => cmd_display_probe(),
         "battery" => cmd_battery(),
+        // hidden debug helper: read-only sweep of the GET opcode family
+        "opdump" => cmd_opdump(),
+        "opprobe" => cmd_opprobe(args),
+        "settings-backup" => cmd_settings_backup(args),
         "macro-get" => {
             cmd_macro_get(args.first().and_then(|s| s.parse().ok()).unwrap_or(0))
         }
@@ -120,6 +124,7 @@ fn run(cmd: &str, args: &[String]) -> i32 {
             else { Err(format!("readback != written ({:?} != {:?})", back.0, mute.0)) }
         }),
         "scan" => cmd_scan(),
+        "events" => cmd_events(args),
         // hidden debug helper: per-key RGB geometry, no device access
         "perkey-dry" => cmd_perkey_dry(),
         _ => {
@@ -472,6 +477,147 @@ fn cmd_display() -> i32 {    with_kb(|kb| {
 
 /// Empirical battery probe: tries undocumented read-only opcodes and reports
 /// the first reply that looks like a percentage.
+/// (hidden) Read-only sweep of the GET opcode family.
+///
+/// Safety: only opcodes 0x80..=0x9F are touched. Every one of them is a
+/// "read state" command in this protocol family; unimplemented opcodes echo
+/// the previous reply, so a reply that starts with the requested opcode is a
+/// real handler, and anything else is a stale buffer. NOTHING here writes.
+fn cmd_settings_backup(args: &[String]) -> i32 {
+    let path = args
+        .first()
+        .cloned()
+        .unwrap_or_else(|| "/tmp/opencode/sharkdeck-settings.json".to_string());
+    with_kb(|kb| {
+        let info = kb.info()?;
+        let mut profiles = Vec::new();
+        for p in 0..3u8 {
+            profiles.push(serde_json::json!({
+                "index": p,
+                "base": b64(&kb.keymap_layer(p)?),
+                "fn": b64(&kb.fn_layer(p)?),
+            }));
+        }
+        let mut macros = Vec::new();
+        for s in 0..50u8 {
+            macros.push(serde_json::json!({ "slot": s, "data": b64(&kb.macro_read(s)?) }));
+        }
+        let doc = serde_json::json!({
+            "format": "sharkdeck-settings",
+            "version": 1,
+            "device": { "device_id": info.device_id, "firmware": info.firmware },
+            "profiles": profiles,
+            "macros": macros,
+            "options": kb.options_get()?,
+            "lighting": { "main": kb.light(false)?, "side": kb.light(true)? },
+        });
+        std::fs::write(&path, serde_json::to_string_pretty(&doc).map_err(|e| e.to_string())?)
+            .map_err(|e| e.to_string())?;
+        Ok(format!("wrote {path}"))
+    })
+}
+
+/// base64 (standard) of a byte slice.
+fn b64(b: &[u8]) -> String {
+    use base64::Engine;
+    base64::engine::general_purpose::STANDARD.encode(b)
+}
+
+fn cmd_opprobe(args: &[String]) -> i32 {
+    // Characterise one or more opcodes by diffing against a known-good
+    // baseline reply (0x8F = device id 1168). An opcode that merely echoes
+    // the previous reply returns exactly the baseline bytes.
+    with_kb(|kb| {
+        let mut out = String::new();
+        let ops: Vec<u8> = if args.is_empty() {
+            vec![0x82, 0x83, 0x84, 0x8D, 0x91, 0x92, 0x97, 0x36]
+        } else {
+            let mut v = Vec::new();
+            for a in args {
+                let s = a.trim_start_matches("0x");
+                if let Ok(b) = u8::from_str_radix(s, 16) {
+                    v.push(b);
+                }
+            }
+            v
+        };
+        let baseline = kb.debug_query(0x8F).unwrap_or([0u8; 64]);
+        out.push_str(&format!(
+            "baseline 0x8F: {:02x?}\n",
+            &baseline[..8]
+        ));
+        for op in ops {
+            let r = match kb.debug_query(op) {
+                Ok(r) => r,
+                Err(e) => {
+                    out.push_str(&format!("op {op:#04x} -> err {e}\n"));
+                    continue;
+                }
+            };
+            // Re-poison with 0x8F: if the device still answers it, the board
+            // is alive and the previous reply was genuinely produced.
+            let after = kb.debug_query(0x8F).unwrap_or([0u8; 64]);
+            let alive = after == baseline;
+            let head = &r[..16.min(r.len())];
+            let verdict = if r == baseline {
+                "stale (echoes previous reply -> unimplemented)"
+            } else if r[0] == op {
+                "IMPLEMENTED (echoed)"
+            } else {
+                "reply without opcode echo (echoless / data payload)"
+            };
+            out.push_str(&format!(
+                "op {op:#04x} -> {:02x?} | {verdict} | device_alive={alive}\n",
+                head
+            ));
+        }
+        Ok(out)
+    })
+}
+
+fn cmd_opdump() -> i32 {
+    with_kb(|kb| {
+        // Poison the reply cache with a known request so a stale buffer is
+        // recognisable (0x8F -> device id 1168 = 0x90 0x04 0x00 0x00).
+        let _ = kb.debug_query(0x8F);
+        let mut implemented: Vec<u8> = Vec::new();
+        let mut interesting: Vec<String> = Vec::new();
+        for op in 0x80u8..=0x9F {
+            if op == 0x8F {
+                continue; // known: device id
+            }
+            let r = match kb.debug_query(op) {
+                Ok(r) => r,
+                Err(e) => {
+                    println!("op {op:#04x} -> err {e}");
+                    continue;
+                }
+            };
+            let head = &r[..12.min(r.len())];
+            let echoed = r[0] == op;
+            let nonzero = r[1..].iter().filter(|b| **b != 0).count();
+            println!(
+                "op {op:#04x} -> {:02x?} echo={echoed} nonzero_tail={nonzero}",
+                head
+            );
+            if echoed {
+                implemented.push(op);
+            }
+            if echoed && nonzero >= 4 {
+                interesting.push(format!("{op:#04x}"));
+            }
+        }
+        Ok(format!(
+            "implemented GET opcodes: {}",
+            implemented
+                .iter()
+                .map(|o| format!("{o:#04x}"))
+                .collect::<Vec<_>>()
+                .join(" ")
+        ))
+    })
+}
+
 fn cmd_battery() -> i32 {
     with_kb(|kb| {
         // Raw dumps first so a false positive can be spotted by eye.
@@ -596,6 +742,52 @@ fn cmd_perkey_dry() -> i32 {
 }
 
 /// List every HID path (for plumbing debug).
+fn cmd_events(args: &[String]) -> i32 {
+    let secs: u64 = args
+        .first()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(8);
+    let cands = match sharkdeck_core::hid::find_candidates() {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("events: {e}");
+            return 1;
+        }
+    };
+    let filter = args.get(1).cloned().unwrap_or_default();
+    let mut listened = false;
+    for c in &cands {
+        if !filter.is_empty() && !c.path.contains(&filter) {
+            continue;
+        }
+        // Skip our own control channel (0xFFFF/0x0002) — it has no input
+        // reports and touching it may confuse the firmware.
+        if c.usage_page == 0xFFFF && c.usage == 0x0002 {
+            continue;
+        }
+        listened = true;
+        println!(
+            "listening {} (interface {}, upage {:#06x}, usage {:#06x}) for {secs}s",
+            c.path, c.interface, c.usage_page, c.usage
+        );
+        match sharkdeck_core::hid::read_events(&c.path, secs) {
+            Ok(events) => {
+                if events.is_empty() {
+                    println!("  (no input reports)");
+                }
+                for (ms, bytes) in events {
+                    println!("  +{ms}ms {:02x?}", bytes);
+                }
+            }
+            Err(e) => println!("  error: {e}"),
+        }
+    }
+    if !listened {
+        println!("no event interfaces found");
+    }
+    0
+}
+
 fn cmd_scan() -> i32 {
     match sharkdeck_core::hid::find_candidates() {
         Ok(list) => {

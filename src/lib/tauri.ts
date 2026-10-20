@@ -171,3 +171,10 @@ export async function installUpdate(onProgress?: (p: number) => void): Promise<v
 export async function restartApp(): Promise<void> {
   await relaunch();
 }
+
+/** Full settings snapshot (keymap ×3 profiles, Fn layers, 50 macros,
+ *  option bytes, lighting) written to `path` as JSON. */
+export const settingsBackup = (path: string) => invoke<string>('settings_backup', { path });
+
+/** Restore a settings snapshot; only differing slots are written. */
+export const settingsRestore = (path: string) => invoke<string>('settings_restore', { path });

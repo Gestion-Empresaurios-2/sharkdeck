@@ -49,6 +49,36 @@ fn scan(api: &HidApi) -> Vec<HidCandidate> {
     out
 }
 
+/// Read raw INPUT reports from a hidraw path for `seconds`, returning
+/// `(elapsed_ms, bytes)` pairs. Used to explore the device's native event
+/// channels (the K86's interface 1 exposes a 3-byte vendor INPUT report).
+/// Trailing zero bytes are trimmed so the output stays readable.
+pub fn read_events(path: &str, seconds: u64) -> Result<Vec<(u64, Vec<u8>)>, String> {
+    let api = HidApi::new().map_err(|e| e.to_string())?;
+    let dev = api
+        .open_path(std::ffi::CString::new(path).unwrap().as_c_str())
+        .map_err(|e| format!("open {path}: {e}"))?;
+    let mut out = Vec::new();
+    let start = std::time::Instant::now();
+    let mut buf = [0u8; 64];
+    while start.elapsed().as_secs() < seconds {
+        match dev.read_timeout(&mut buf, 200) {
+            Ok(n) => {
+                if n == 0 {
+                    continue; // timeout tick
+                }
+                let mut v = buf[..n].to_vec();
+                while v.len() > 1 && v[v.len() - 1] == 0 {
+                    v.pop();
+                }
+                out.push((start.elapsed().as_millis() as u64, v));
+            }
+            Err(_) => continue, // timeout: keep listening
+        }
+    }
+    Ok(out)
+}
+
 /// Refresh-and-scan: create a fresh HidApi so the OS re-enumerates after
 /// plug/unplug.
 pub fn find_candidates() -> Result<Vec<HidCandidate>, String> {

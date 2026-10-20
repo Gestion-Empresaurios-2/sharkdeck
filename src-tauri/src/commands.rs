@@ -184,7 +184,8 @@ fn capture_hidraw(secs: u64) -> Vec<String> {
             if let Ok(evs) = sharkdeck_core::hid::read_events(&c.path, secs) {
                 for (ms, bytes) in evs {
                     let hex: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
-                    out.push(format!("+{ms}ms {hex}"));
+                    let desc = sharkdeck_core::events::describe_hid_report(&bytes);
+                    out.push(format!("+{ms}ms {hex}  ·  {desc}"));
                 }
             }
         }

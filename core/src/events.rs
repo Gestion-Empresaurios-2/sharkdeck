@@ -230,3 +230,70 @@ mod tests {
         assert_eq!(s.presses, 1);
     }
 }
+
+// ---------------------------------------------------------------------------
+// Raw vendor-HID report decoding
+// ---------------------------------------------------------------------------
+
+/// Consumer-page usage names seen on this keyboard family.
+pub fn consumer_name(code: u16) -> &'static str {
+    match code {
+        0xE9 => "Volume Up",
+        0xEA => "Volume Down",
+        0xE2 => "Mute",
+        0xCD => "Play/Pause",
+        0xB5 => "Next Track",
+        0xB6 => "Previous Track",
+        0xB7 => "Stop",
+        0x6F => "Brightness Up",
+        0x70 => "Brightness Down",
+        0x221 => "Search",
+        0x192 => "Calculator",
+        0x196 => "Browser",
+        0xE0 => "Volume Mute",
+        _ => "consumer",
+    }
+}
+
+/// Describe one raw HID report from the vendor interface.
+///
+/// The K86's interface 1 exposes several INPUT report ids (1 = keyboard
+/// bitmap, 2 = system control, 3 = 16-bit consumer, 5 = vendor 0xFFFF/1 with
+/// three 8-bit bytes, 6 = generic/consumer). The knob's axis data is expected
+/// in the vendor report, so the bytes are also shown as signed deltas.
+pub fn describe_hid_report(b: &[u8]) -> String {
+    if b.is_empty() {
+        return "(empty report)".into();
+    }
+    let id = b[0];
+    let rest = &b[1..];
+    let mut parts: Vec<String> = Vec::new();
+    match id {
+        1 => parts.push("keyboard bitmap".into()),
+        2 => parts.push("system control".into()),
+        3 => {
+            let code = if rest.len() >= 2 {
+                u16::from_le_bytes([rest[0], rest[1]])
+            } else {
+                0
+            };
+            parts.push(format!("consumer {code:#06x} ({})", consumer_name(code)));
+        }
+        5 => {
+            parts.push("vendor 0xFFFF/1".into());
+            let signed: Vec<i8> = rest.iter().map(|v| *v as i8).collect();
+            parts.push(format!("bytes {signed:?}"));
+        }
+        6 => {
+            parts.push("generic/consumer".into());
+            if rest.len() >= 3 {
+                let code = u16::from_le_bytes([rest[1], rest[2]]);
+                if code != 0 {
+                    parts.push(format!("consumer {code:#06x} ({})", consumer_name(code)));
+                }
+            }
+        }
+        other => parts.push(format!("report id {other}")),
+    }
+    parts.join(" · ")
+}

@@ -589,7 +589,11 @@ fn cmd_knob_events(args: &[String]) -> i32 {
                         }
                         Ok(evs) => {
                             for (ms, bytes) in evs {
-                                println!("  +{ms}ms {:02x?}", bytes);
+                                println!(
+                                    "  +{ms}ms {:02x?}  {}",
+                                    bytes,
+                                    sharkdeck_core::events::describe_hid_report(&bytes)
+                                );
                             }
                         }
                         Err(e) => println!("  error: {e}"),

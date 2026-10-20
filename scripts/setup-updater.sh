@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/usr/bin/env sh
 # One-time updater setup for SharkDeck.
 #
 # It does the sensitive part ON YOUR MACHINE (a private signing key is never
@@ -6,13 +6,16 @@
 # public key into tauri.conf.json, and stores the private key in .updater/ for
 # the release build.
 #
+#   sh scripts/setup-updater.sh        # works with dash/sh AND bash
 #   ./scripts/setup-updater.sh
 #
 # Afterwards: add the printed TAURI_SIGNING_PRIVATE_KEY / _PASSWORD as GitHub
 # repository secrets so the release workflow can sign update artifacts.
-set -euo pipefail
+set -eu
+# pipefail is a bash/ksh/zsh feature; enable it only when the shell has it.
+(set -o pipefail) 2>/dev/null && set -o pipefail || true
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT="$(cd "$(dirname "$0")" && pwd)"
 cd "$ROOT"
 
 KEY_DIR="$ROOT/.updater"
@@ -23,7 +26,10 @@ if [ -f "$KEY" ]; then
   echo "→ key already exists at $KEY (delete it to rotate)"
 else
   echo "→ generating updater keypair (choose a password — you will need it in CI)"
-  npx tauri signer generate --writable-keys -w "$KEY"
+  if ! npx tauri signer generate --writable-keys -w "$KEY"; then
+    echo "→ local tauri CLI unavailable, trying the published one"
+    npx --yes @tauri-apps/cli@latest signer generate --writable-keys -w "$KEY"
+  fi
 fi
 
 PUB_B64="$(python3 - <<'PY'
@@ -61,9 +67,27 @@ echo
 echo "Next steps:"
 echo "  1. Add GitHub secrets: TAURI_SIGNING_PRIVATE_KEY (contents of $KEY)"
 echo "     and TAURI_SIGNING_PRIVATE_KEY_PASSWORD (the password you chose)."
+echo "     From this folder:  gh secret set TAURI_SIGNING_PRIVATE_KEY < $KEY"
+echo "                         gh secret set TAURI_SIGNING_PRIVATE_KEY_PASSWORD"
 echo "  2. Tag a release:  git tag v0.2.0 && git push origin v0.2.0"
 echo "  3. The workflow builds the AppImage + .sig and publishes latest.json;"
 echo "     SharkDeck's Device page then offers 'Install & restart'."
 echo
 echo "NOTE: the release feed URL must be reachable without auth — make the"
 echo "repository public, or point plugins.updater.endpoints at your own host."
+
+# Optional: push the secrets straight into the GitHub repo (no key on screen).
+if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
+  echo
+  read -r -p "→ set the GitHub secrets now? (private key + password) [y/N] " ans || ans=""
+  case "$ans" in
+    [yY]|[yY][eE][sS])
+      gh secret set TAURI_SIGNING_PRIVATE_KEY < "$KEY"
+      gh secret set TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+      echo "→ secrets uploaded to $(gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null || echo 'the repo')"
+      ;;
+    *)
+      echo "→ skipped; set them later with the commands above"
+      ;;
+  esac
+fi

@@ -87,7 +87,7 @@ SharkDeck ships with a signed in-app updater (`tauri-plugin-updater`): **Device 
 One-time setup (run it in your terminal — the private key is deliberately never handled by an agent and never committed):
 
 ```bash
-./scripts/setup-updater.sh
+sh scripts/setup-updater.sh    # POSIX-sh safe (works with sh/dash/bash)
 ```
 
 It generates the keypair, writes the public key into `src-tauri/tauri.conf.json`, and tells you to add `TAURI_SIGNING_PRIVATE_KEY` + `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` as repository secrets. After that, tagging releases is enough:

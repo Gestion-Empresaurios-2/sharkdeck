@@ -30,9 +30,6 @@
     "targets": ["appimage", "deb"],
     "category": "Utility",
     "shortDescription": "Screen, knob, lighting and keymap control for the Attack Shark K86",
-    "linux": {
-      "execArgs": []
-    },
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

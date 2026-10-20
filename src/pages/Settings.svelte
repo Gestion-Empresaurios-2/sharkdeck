@@ -1,0 +1,259 @@
+<script lang="ts">
+  import * as api from '../lib/tauri';
+  import { store, toast, errText, probeDevice, connected } from '../lib/store.svelte';
+  import type { KbOptions } from '../lib/types';
+  import { onMount } from 'svelte';
+
+  const UDEV = `SUBSYSTEM=="hidraw", ATTRS{idVendor}=="3151", ATTRS{idProduct}=="4015", MODE="0660", TAG+="uaccess"`;
+
+  const OPTS: { key: keyof KbOptions; label: string; hint: string }[] = [
+    { key: 'win_lock', label: 'Win key locked', hint: 'Option bit 0x01 — logo key ignored' },
+    { key: 'mac_mode', label: 'Mac mode', hint: 'Option bit 0x02 — swapping modifiers' },
+    { key: 'wasd_swap', label: 'WASD swap', hint: 'Option bit 0x08' },
+    { key: 'keyboard_mode', label: 'Keyboard-mode flag', hint: 'Option bit 0x40' },
+    { key: 'keyboard_lock', label: 'Keyboard locked', hint: 'Option bit 0x80 — whole keyboard frozen' },
+  ];
+
+  let opts = $state<KbOptions | null>(null);
+  let display = $state<{ width: number | null; height: number | null; brightness?: number } | null>(null);
+  let logs = $state<string[]>([]);
+  let busy = $state('');
+  let copied = $state(false);
+
+  onMount(() => {
+    syncOpts();
+    if (connected()) syncLogs();
+    const t = setInterval(syncLogs, 2500);
+    return () => clearInterval(t);
+  });
+
+  function syncOpts() {
+    opts =
+      (store.device?.options as KbOptions | undefined) ??
+      (store.options as KbOptions | undefined) ??
+      null;
+  }
+
+  async function syncLogs() {
+    try {
+      logs = await api.logsGet();
+    } catch {
+      /* left */
+    }
+  }
+
+  async function probe() {
+    await probeDevice();
+    syncOpts();
+  }
+
+  async function disconnect() {
+    try {
+      await api.disconnect();
+      store.device = null;
+      opts = null;
+      toast('info', 'Disconnected');
+    } catch (e) {
+      toast('err', errText(e));
+    }
+  }
+
+  async function saveOpts() {
+    if (!opts) return;
+    busy = 'opts';
+    try {
+      await api.optionsSet(opts);
+      toast('ok', 'Option bytes written');
+      store.device = { ...(store.device ?? {}), options: opts };
+    } catch (e) {
+      toast('err', errText(e));
+    } finally {
+      busy = '';
+    }
+  }
+
+  async function probeDisplay() {
+    if (!connected()) return toast('err', 'Probe the device first');
+    busy = 'display';
+    try {
+      display = await api.displayParams();
+      if (display && display.width) toast('ok', `Panel: ${display.width}×${display.height}`);
+      else toast('warn' as 'info', 'Panel read returned no plausible values');
+    } catch (e) {
+      toast('err', errText(e));
+    } finally {
+      busy = '';
+    }
+  }
+
+  function copyUdev() {
+    navigator.clipboard?.writeText(UDEV).then(
+      () => {
+        copied = true;
+        setTimeout(() => (copied = false), 1500);
+      },
+      () => toast('err', 'Clipboard blocked by the webview'),
+    );
+  }
+</script>
+
+<div class="page">
+  <div class="page-head">
+    <h2>Device</h2>
+    <p>Identity, protocol inspection and app preferences.</p>
+  </div>
+
+  <div class="cols">
+    <div class="grid" style="gap:16px">
+      <div class="panel">
+        <h3>Identity</h3>
+        {#if store.device && !store.device.error}
+          <div class="kv"><span class="k">Hidraw path</span><span class="v">{store.device.path}</span></div>
+          <div class="kv"><span class="k">Handshake id</span><span class="v">{store.device.handshakeId} <span class="muted">(K86 → 1168)</span></span></div>
+          <div class="kv"><span class="k">Firmware</span><span class="v">{store.device.firmware}</span></div>
+          <div class="kv"><span class="k">Profile</span><span class="v">{Number(store.device.profile) + 1} / 3</span></div>
+        {:else}
+          <p class="hint">Nothing connected yet.</p>
+        {/if}
+        <div class="row" style="margin-top:14px">
+          <button class="btn primary" onclick={probe} disabled={store.busy}>
+            {#if store.busy}<span class="spinner"></span>{/if} Probe
+          </button>
+          <button class="btn" onclick={disconnect} disabled={!connected()}>Disconnect</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h3>Display calibration</h3>
+        <p class="hint">
+          Press the button, quickly watch the panel and compare against the firmware's answer:
+        </p>
+        <div class="row" style="margin-top:12px">
+          <button class="btn" onclick={() => (store.page = 'screen')}>Patterns page →</button>
+          <button class="btn" onclick={probeDisplay} disabled={busy === 'display'}>
+            {#if busy === 'display'}<span class="spinner"></span>{/if} Read panel params (0x0E)
+          </button>
+          {#if display}
+            <span class="mono" style="font-size:12px">
+              {display.width ?? '?'}×{display.height ?? '?'}
+              {display.brightness != null ? ` · brightness ${display.brightness}` : ''}
+            </span>
+          {/if}
+        </div>
+        <p class="hint" style="margin-top:10px">
+          The sheared/orientation pattern page is under Screen → Built-in patterns.
+        </p>
+      </div>
+
+      <div class="panel">
+        <h3>udev rule (Linux)</h3>
+        <p class="hint">No sudo UI hacks — a uaccess tag gives your seat direct HID access:</p>
+        <pre class="mono">{UDEV}</pre>
+        <div class="row" style="margin-top:10px">
+          <button class="btn sm" onclick={copyUdev}>{copied ? 'Copied ✓' : 'Copy'}</button>
+          <span class="hint">→ /etc/udev/rules.d/99-sharkdeck.rules, then `udevadm control --reload && udevadm trigger`</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid" style="gap:16px">
+      <div class="panel">
+        <h3>Option bytes</h3>
+        {#if opts}
+          {#each OPTS as o (o.key)}
+            <label class="opt">
+              <input type="checkbox" bind:checked={opts[o.key]} />
+              <div>
+                <div>{o.label}</div>
+                <div class="hint">{o.hint}</div>
+              </div>
+            </label>
+          {/each}
+          <div class="kv" style="margin-top:8px">
+            <span class="k">fn_matrix flag</span><span class="v">{opts.fn_matrix}</span>
+          </div>
+          <div class="kv">
+            <span class="k">power_save</span><span class="v">{opts.power_save}</span>
+          </div>
+          <button class="btn primary" style="margin-top:14px" onclick={saveOpts} disabled={busy === 'opts'}>
+            {#if busy === 'opts'}<span class="spinner"></span>{/if} Write options
+          </button>
+        {:else}
+          <p class="hint">Probe the device to read option bits.</p>
+        {/if}
+      </div>
+
+      <div class="panel">
+        <h3>Log</h3>
+        <div class="log mono">
+          {#each logs as l, i (i)}
+            <div>{l}</div>
+          {:else}
+            <div class="muted">empty</div>
+          {/each}
+        </div>
+      </div>
+
+      <div class="panel">
+        <h3>About SharkDeck</h3>
+        <p class="hint" style="line-height:1.65">
+          Open-source control panel for the Attack Shark K86 (3151:4015) — hardware-verified
+          protocol thanks to these MIT projects:<br />
+          · <b>RaphaelCaputo2/shark-k86-mac</b> · <b>mehmetnadir/keyboard-studio</b> ·
+          <b>dniminenn/sharkfin</b> (dnim.dev)<br /><br />
+          <b>Safety by design:</b> destructive vendor opcodes (flash erase 0xAC, display erase
+          0x2C, boot entry 0x7F/0x30, factory reset 0x02) are never wired — the app only touches
+          keymap, options, lighting, macros and image slots. Writes are read-verified with
+          automatic rollback.
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+  .cols {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+    gap: 16px;
+    align-items: start;
+  }
+  pre.mono {
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    padding: 10px 12px;
+    font-size: 11.5px;
+    color: #9fe3b0;
+    white-space: pre-wrap;
+    user-select: all;
+  }
+  .log {
+    max-height: 220px;
+    overflow-y: auto;
+    font-size: 11px;
+    color: var(--text-dim);
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column-reverse;
+    gap: 3px;
+    user-select: all;
+  }
+  .opt {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    padding: 9px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    font-size: 13px;
+  }
+  .opt:last-of-type {
+    border-bottom: none;
+  }
+  .opt input {
+    margin-top: 2px;
+  }
+</style>

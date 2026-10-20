@@ -2,9 +2,10 @@
 
 :root {
   /* Adwaita-light surfaces */
-  --bg: #fafafa;
-  --panel: #ffffff;
-  --panel-2: #f2f1f0;      /* sidebars, header bars, sunken areas */
+  --bg: #f4f4f6;
+  --panel: rgba(255, 255, 255, 0.74);
+  --panel-solid: #ffffff;
+  --panel-2: rgba(242, 242, 245, 0.78);
   --panel-hover: rgba(0, 0, 0, 0.05);
   --border: rgba(0, 0, 0, 0.11);
   --border-strong: rgba(0, 0, 0, 0.18);
@@ -23,8 +24,11 @@
   --err: #d71c2d;
 
   --radius: 14px;
-  --radius-sm: 8px;
-  --shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 8px 24px rgba(0, 0, 0, 0.06);
+  --radius-sm: 9px;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.05), 0 10px 30px rgba(0, 0, 0, 0.07);
+  --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --material: saturate(180%) blur(22px);
+  --material-border: rgba(255, 255, 255, 0.6);
 
   --font: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', 'Ubuntu', 'Cantarell', 'Segoe UI', sans-serif;
   --mono: 'Ubuntu Mono', 'SF Mono', 'JetBrains Mono', 'Fira Code', Consolas, monospace;
@@ -46,12 +50,14 @@
 
 :root[data-theme='dark'] {
   /* Adwaita-dark surfaces */
-  --bg: #1d1e20;
-  --panel: #26272a;
-  --panel-2: #2c2d30;
+  --bg: #1b1c1e;
+  --panel: rgba(40, 41, 44, 0.74);
+  --panel-solid: #292a2d;
+  --panel-2: rgba(52, 53, 56, 0.66);
   --panel-hover: rgba(255, 255, 255, 0.07);
   --border: rgba(255, 255, 255, 0.1);
   --border-strong: rgba(255, 255, 255, 0.16);
+  --material-border: rgba(255, 255, 255, 0.08);
 
   --text: #f3f3f3;
   --text-dim: rgba(255, 255, 255, 0.6);
@@ -201,6 +207,8 @@ input[type='checkbox'] {
 
 .panel {
   background: var(--panel);
+  backdrop-filter: var(--material);
+  -webkit-backdrop-filter: var(--material);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 16px 18px;
@@ -230,9 +238,9 @@ input[type='checkbox'] {
 }
 
 .page-head h2 {
-  font-size: 18px;
+  font-size: 20px;
   font-weight: 600;
-  letter-spacing: 0;
+  letter-spacing: -0.021em;
 }
 
 .page-head p {
@@ -266,23 +274,28 @@ input[type='checkbox'] {
   padding: 8px 14px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-strong);
-  background: var(--panel);
+  background: var(--panel-solid);
+  box-shadow: var(--shadow-soft);
   color: var(--text);
   font-weight: 500;
   font-size: 13px;
   transition:
-    background 0.12s,
-    border-color 0.12s,
-    transform 0.08s;
+    background 0.16s cubic-bezier(0.32, 0.72, 0, 1),
+    border-color 0.16s cubic-bezier(0.32, 0.72, 0, 1),
+    box-shadow 0.16s cubic-bezier(0.32, 0.72, 0, 1),
+    transform 0.12s cubic-bezier(0.32, 0.72, 0, 1);
   white-space: nowrap;
 }
 
 .btn:hover {
-  background: var(--panel-hover);
+  background: var(--panel-2);
+  border-color: var(--border-strong);
 }
+
 .btn:active {
-  transform: scale(0.985);
+  transform: scale(0.975);
   background: var(--active-press);
+  box-shadow: none;
 }
 .btn:disabled {
   opacity: 0.5;

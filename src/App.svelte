@@ -129,8 +129,10 @@
     color: var(--text);
   }
   aside {
-    background: var(--panel);
-    border-right: 1px solid var(--border);
+    background: var(--panel-2);
+    backdrop-filter: var(--material);
+    -webkit-backdrop-filter: var(--material);
+    border-right: 1px solid var(--hairline);
     display: flex;
     flex-direction: column;
     padding: 12px 10px;

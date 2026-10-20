@@ -106,6 +106,7 @@ fn run(cmd: &str, args: &[String]) -> i32 {
         // hidden debug helper: read-only sweep of the GET opcode family
         "opdump" => cmd_opdump(),
         "opprobe" => cmd_opprobe(args),
+        "opfull" => cmd_opfull(args),
         "settings-backup" => cmd_settings_backup(args),
         "macro-get" => {
             cmd_macro_get(args.first().and_then(|s| s.parse().ok()).unwrap_or(0))
@@ -523,6 +524,48 @@ fn b64(b: &[u8]) -> String {
     base64::engine::general_purpose::STANDARD.encode(b)
 }
 
+fn cmd_opfull(args: &[String]) -> i32 {
+    // Dump the FULL 64-byte reply of a read-only opcode so undocumented
+    // payloads can be decoded field by field.
+    with_kb(|kb| {
+        let mut out = String::new();
+        let ops: Vec<u8> = if args.is_empty() {
+            vec![0x82, 0x83, 0x84, 0x8D, 0x91, 0x92, 0x97]
+        } else {
+            let mut v = Vec::new();
+            for a in args {
+                let s = a.trim_start_matches("0x");
+                if let Ok(b) = u8::from_str_radix(s, 16) {
+                    v.push(b);
+                }
+            }
+            v
+        };
+        for op in ops {
+            let r = match kb.debug_query(op) {
+                Ok(r) => r,
+                Err(e) => {
+                    out.push_str(&format!("op {op:#04x} -> err {e}\n"));
+                    continue;
+                }
+            };
+            let hex: String = r.iter().map(|b| format!("{b:02x}")).collect();
+            let mut words = Vec::new();
+            for (i, chunk) in r.chunks(4).enumerate() {
+                let v = chunk
+                    .iter()
+                    .fold(0u32, |acc, b| (acc << 8) | *b as u32);
+                words.push(format!("w{i}={v}"));
+            }
+            out.push_str(&format!(
+                "op {op:#04x} hex={hex}\n    {}\n",
+                words.join(" ")
+            ));
+        }
+        Ok(out)
+    })
+}
+
 fn cmd_opprobe(args: &[String]) -> i32 {
     // Characterise one or more opcodes by diffing against a known-good
     // baseline reply (0x8F = device id 1168). An opcode that merely echoes
@@ -764,6 +807,11 @@ fn cmd_events(args: &[String]) -> i32 {
         // reports and touching it may confuse the firmware.
         if c.usage_page == 0xFFFF && c.usage == 0x0002 {
             continue;
+        }
+        if cands.iter().filter(|x| x.path == c.path).count() > 1
+            && cands.iter().any(|x| x.path == c.path && x.interface < c.interface)
+        {
+            continue; // same path enumerated with several usage views
         }
         listened = true;
         println!(

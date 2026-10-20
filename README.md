@@ -3,13 +3,22 @@
 Control surface for the **Attack Shark K86 (3151:4015)** — a native desktop app that unlocks the little TFT screen and the knob most vendor software leaves untouchable.
 
 - **Screen** — push images, GIFs, live clock, built-in patterns to any of the 5 on-device image slots (RGB565, tested at 128×128)
+- **Templates** — a gallery of composed screen designs (dashboard, retro terminal, matrix rain, waves, equalizer, SharkDeck, plus a **watch-face family**: classic / pixel / digital / chronograph) built from composable widgets: clock (5 sizes + seconds), date, ticker, wave, rain, frame, equalizer, scanlines, brand fin, meter, analog watch dial, date window, battery, ring, steps, and **live desk data** (host battery %, CPU load, RAM used, uptime, keyboard firmware/profile). Every template ships a real canvas preview, and the panel shows a **live mirror of exactly what the keyboard is displaying**.
 - **Knob** — rebind turn-left / turn-right / press to keys, media controls, firmware actions or macros. On the shipped firmware (1.19) the knob lives at matrix slots **96 = turn-left, 97 = turn-right, 78 = press** (factory: volume down / volume up / mute) — the app reads the real slots before showing any binding, so it stays correct even if the firmware moves things. — hardware-verified on firmware 1.19: turn-left = slot 96, turn-right = slot 97, press = slot 78
 - **Lighting** — 20 effects, brightness/speed/direction, main + side strips, presets, rainbow, and a "nothing lights up" fixer
 - **Keymap** — visual 75% layout editor over Base/Fn layers and 3 profiles with read-verify-rollback writes + JSON backup/restore
 - **Macros** — 50 macro slots with key/button/pointer-move events and repeat modes
-- **Device** — identity, firmware, panel geometry probe, option flags, logs
+- **Device** — identity, firmware, panel geometry probe, option flags, logs, plus a "Desk & keyboard" panel with host battery/CPU/RAM/uptime and the keyboard's own state
 
 Everything the app writes to flash is **read back and verified**, with automatic rollback if the device disagrees.
+
+## Notes & honest limits
+
+- **The keyboard has no screen read-back.** The protocol exposes no opcode to read the panel, so the app's "on the keyboard now" panel mirrors exactly the pixel stream SharkDeck sends (and says so). Panel geometry is therefore verified visually with the ruler/orientation/band patterns in the panel-size campaign.
+- **The K86 has no battery read command.** The firmware only offers a *key action* (0x08 "checkBattery"), not a read; probing every plausible read opcode returns unrelated/stale frames, so the app reports the keyboard battery as "not reported" instead of inventing a number. Host battery comes from `/sys/class/power_supply`.
+- **Animation delays are centiseconds** on the wire (1 s = 100, max 2.55 s per frame); GIF delays are converted from the file's 10 ms units.
+- **Which image slot is on screen is chosen on the keyboard itself** (its own menu opens with the knob) — the app writes into slots 1–5 but cannot switch the display.
+- **Theme**: GNOME/Yaru-flat light and Adwaita-dark pair, no gradients, keyboard focus rings, `prefers-reduced-motion` respected.
 
 ## Build
 

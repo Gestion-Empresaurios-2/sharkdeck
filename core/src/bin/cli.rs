@@ -571,6 +571,31 @@ fn cmd_knob_events(args: &[String]) -> i32 {
         }
         Err(e) => {
             eprintln!("knob-events: {e}");
+            // Fallback: capture the raw HID stream of the vendor interface
+            // (page 0xFFFF usage 0x0001) so knob activity is visible even
+            // without membership of the 'input' group.
+            if let Ok(cands) = sharkdeck_core::hid::find_candidates() {
+                for c in cands
+                    .iter()
+                    .filter(|c| c.usage_page == 0xFFFF && c.usage == 0x0001)
+                {
+                    println!(
+                        "raw hidraw fallback on {} — turn and press the knob now",
+                        c.path
+                    );
+                    match sharkdeck_core::hid::read_events(&c.path, secs) {
+                        Ok(evs) if evs.is_empty() => {
+                            println!("  (no raw reports — was the knob touched?)")
+                        }
+                        Ok(evs) => {
+                            for (ms, bytes) in evs {
+                                println!("  +{ms}ms {:02x?}", bytes);
+                            }
+                        }
+                        Err(e) => println!("  error: {e}"),
+                    }
+                }
+            }
             1
         }
     }

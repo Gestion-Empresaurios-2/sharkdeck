@@ -19,13 +19,39 @@
   let logs = $state<string[]>([]);
   let busy = $state('');
   let copied = $state(false);
+  let host = $state<api.HostInfo | null>(null);
+  let kbBattery = $state<number | null>(null);
 
   onMount(() => {
     syncOpts();
     if (connected()) syncLogs();
     const t = setInterval(syncLogs, 2500);
-    return () => clearInterval(t);
+    refreshHost();
+    const h = setInterval(refreshHost, 5000);
+    return () => {
+      clearInterval(t);
+      clearInterval(h);
+    };
   });
+
+  async function refreshHost() {
+    try {
+      host = await api.hostInfo();
+    } catch {
+      /* host metrics unavailable */
+    }
+    try {
+      kbBattery = await api.batteryProbe();
+    } catch {
+      kbBattery = null;
+    }
+  }
+
+  function uptimeText(s: number): string {
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    return h > 0 ? `${h}h ${m}m` : `${m}m`;
+  }
 
   function syncOpts() {
     opts =
@@ -121,6 +147,26 @@
           </button>
           <button class="btn" onclick={disconnect} disabled={!connected()}>Disconnect</button>
         </div>
+      </div>
+
+      <div class="panel">
+        <h3>Desk &amp; keyboard</h3>
+        <div class="kv"><span class="k">Host</span><span class="v">{host?.hostname ?? '—'}</span></div>
+        <div class="kv">
+          <span class="k">Host battery</span>
+          <span class="v">{host?.battery != null ? `${host.battery}%${host.charging ? ' charging' : ''}` : '—'}</span>
+        </div>
+        <div class="kv"><span class="k">CPU load</span><span class="v">{host ? `${host.cpu.toFixed(0)}%` : '—'}</span></div>
+        <div class="kv"><span class="k">Memory used</span><span class="v">{host ? `${host.ram.toFixed(0)}%` : '—'}</span></div>
+        <div class="kv"><span class="k">Host uptime</span><span class="v">{host ? uptimeText(host.uptime) : '—'}</span></div>
+        <div class="kv">
+          <span class="k">Keyboard battery</span>
+          <span class="v">{kbBattery != null ? `${kbBattery}%` : 'not reported'}</span>
+        </div>
+        <p class="hint" style="margin-top:8px">
+          The K86 has no battery read command — it only answers while USB-powered, so this stays empty on a wired board.
+          The Host battery / CPU / RAM / Uptime widgets can be pushed onto the screen from the Templates page.
+        </p>
       </div>
 
       <div class="panel">

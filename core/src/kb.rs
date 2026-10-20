@@ -314,7 +314,7 @@ impl Keyboard {
                 if reply[0] == op || reply[0] == 0 {
                     continue; // echo of our own request / empty reply
                 }
-                if reply[1] <= 100 && reply[2] == 0 && reply[3] == 0 {
+                if reply[1] >= 1 && reply[1] <= 100 && reply[2] == 0 && reply[3] == 0 {
                     return Ok(Some(reply[1]));
                 }
             }

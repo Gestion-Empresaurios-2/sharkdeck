@@ -3,6 +3,8 @@
   import * as api from '../lib/tauri';
   import { store, toast, errText, connected } from '../lib/store.svelte.ts';
   import type { KbOptions, LightingState } from '../lib/types';
+  import { RE_ITEMS, reProgress, RE_STATUS_LABEL } from '../lib/replan';
+  const re = reProgress();
 
   let profile = $state(0);
   let options = $state<KbOptions | null>(null);
@@ -192,6 +194,54 @@
     </div>
   </header>
 
+  <section class="panel re-panel">
+    <div class="re-hero">
+      <div>
+        <h3>Reverse-engineering progress</h3>
+        <p class="hint">
+          Every question we are asking about the keyboard's own firmware, and how far each one has got.
+          Evidence for the answered ones lives in the <span class="mono">re/</span> notes of the repository.
+        </p>
+      </div>
+      <div class="re-score">
+        <div class="re-pct">{re.pct}<span>%</span></div>
+        <div class="re-counts">
+          <span class="re-count done">{re.done} answered</span>
+          <span class="re-count open">{re.open} next up</span>
+          <span class="re-count blocked">{re.blocked} closed off</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="re-tracks">
+      {#each re.tracks as t}
+        <div class="re-track">
+          <div class="re-track-head">
+            <span>{t.track}</span>
+            <span class="mono">{t.done}/{t.total}</span>
+          </div>
+          <div class="re-bar"><i style={`width:${t.pct}%`}></i></div>
+        </div>
+      {/each}
+    </div>
+
+    <div class="re-list">
+      {#each RE_ITEMS as it}
+        <div class="re-item" class:done={it.status === 'done'} class:open={it.status === 'open'} class:blocked={it.status === 'blocked'}>
+          <span class="re-dot" aria-hidden="true"></span>
+          <div class="re-body">
+            <div class="re-title">{it.title}</div>
+            <div class="re-note">{it.note}</div>
+          </div>
+          <div class="re-right">
+            <span class="re-status">{RE_STATUS_LABEL[it.status]}</span>
+            {#if it.source}<span class="mono re-src">{it.source}</span>{/if}
+          </div>
+        </div>
+      {/each}
+    </div>
+  </section>
+
   <div class="grid two">
     <section class="panel">
       <h3>Device</h3>
@@ -338,6 +388,76 @@
 </div>
 
 <style>
+
+  .re-panel { margin-bottom: 16px; }
+  .re-hero {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 24px;
+    flex-wrap: wrap;
+  }
+  .re-score { text-align: right; }
+  .re-pct {
+    font-size: 44px;
+    line-height: 1;
+    font-weight: 700;
+    letter-spacing: -0.04em;
+    color: var(--ink);
+  }
+  .re-pct span { font-size: 20px; color: var(--ink-40); margin-left: 2px; }
+  .re-counts { display: flex; gap: 10px; margin-top: 8px; justify-content: flex-end; }
+  .re-count { font-size: 11px; font-family: var(--mono); color: var(--ink-54); }
+  .re-count.done { color: var(--ok); }
+  .re-count.open { color: var(--blue); }
+  .re-count.blocked { color: var(--ink-40); }
+
+  .re-tracks {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 12px;
+    margin: 18px 0 6px;
+  }
+  .re-track-head {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    color: var(--ink-54);
+    margin-bottom: 5px;
+  }
+  .re-bar {
+    height: 4px;
+    background: var(--surface-3);
+    border-radius: 9999px;
+    overflow: hidden;
+  }
+  .re-bar i { display: block; height: 100%; background: var(--blue); border-radius: 9999px; }
+
+  .re-list { margin-top: 14px; }
+  .re-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 9px 0;
+    border-top: 1px solid var(--line);
+  }
+  .re-item:first-child { border-top: none; }
+  .re-dot {
+    width: 7px; height: 7px; border-radius: 9999px; margin-top: 5px; flex: none;
+    background: var(--ink-40);
+  }
+  .re-item.done .re-dot { background: var(--ok); }
+  .re-item.open .re-dot { background: var(--blue); }
+  .re-item.blocked .re-dot { background: var(--line-strong); }
+  .re-body { flex: 1; min-width: 0; }
+  .re-title { font-size: 13px; font-weight: 600; color: var(--ink); }
+  .re-item.blocked .re-title { color: var(--ink-54); }
+  .re-note { font-size: 12px; color: var(--ink-54); margin-top: 2px; }
+  .re-right { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; flex: none; }
+  .re-status { font-size: 10px; font-family: var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-40); }
+  .re-item.done .re-status { color: var(--ok); }
+  .re-item.open .re-status { color: var(--blue); }
+  .re-src { font-size: 10px; color: var(--ink-40); }
 
   .op-grid {
     display: grid;

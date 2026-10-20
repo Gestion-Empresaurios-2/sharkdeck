@@ -26,23 +26,51 @@ if [ -f "$KEY" ]; then
   echo "→ key already exists at $KEY (delete it to rotate)"
 else
   echo "→ generating updater keypair (choose a password — you will need it in CI)"
-  if ! npx tauri signer generate --writable-keys -w "$KEY"; then
-    echo "→ local tauri CLI unavailable, trying the published one"
-    npx --yes @tauri-apps/cli@latest signer generate --writable-keys -w "$KEY"
+  # The CLI's flag has moved around: v2 used `--writable-keys`, newer builds use
+  # `--write-keys <PATH>` (short `-w`). The short form is stable across both, so
+  # prefer it and keep the long spellings as fallbacks.
+  PASS_ARGS=""
+  if [ -n "${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}" ]; then
+    PASS_ARGS="-p $TAURI_SIGNING_PRIVATE_KEY_PASSWORD"
+  fi
+  gen_ok=0
+  # shellcheck disable=SC2086
+  if npx tauri signer generate -w "$KEY" $PASS_ARGS; then
+    gen_ok=1
+  else
+    echo "→ local tauri CLI failed, trying the published one"
+    # shellcheck disable=SC2086
+    if npx --yes @tauri-apps/cli@latest signer generate -w "$KEY" $PASS_ARGS; then
+      gen_ok=1
+    else
+      echo "→ trying the legacy flag spelling"
+      # shellcheck disable=SC2086
+      if npx --yes @tauri-apps/cli@latest signer generate --writable-keys -w "$KEY" $PASS_ARGS; then
+        gen_ok=1
+      fi
+    fi
+  fi
+  if [ "$gen_ok" -ne 1 ]; then
+    echo "!! key generation failed — run it by hand:" >&2
+    echo "   npx tauri signer generate -w $KEY" >&2
+    exit 1
   fi
 fi
 
 PUB_B64="$(python3 - <<'PY'
-import base64, pathlib, re, sys
-# The CLI prints the base64 public key; the .pub file holds the hex key.
-pub = pathlib.Path(".updater/signing.key.pub")
-if pub.exists():
+import base64, pathlib, sys
+# The CLI prints the base64 public key; the .pub file next to the private key
+# holds the hex key. Accept any *.pub inside .updater as a fallback.
+cands = sorted(pathlib.Path(".updater").glob("*.pub"))
+if not cands:
+    sys.exit(1)
+for pub in cands:
     hexkey = pub.read_text().strip().splitlines()[-1].strip()
     try:
         print(base64.b64encode(bytes.fromhex(hexkey)).decode())
         sys.exit(0)
     except Exception:
-        pass
+        continue
 sys.exit(1)
 PY
 )"

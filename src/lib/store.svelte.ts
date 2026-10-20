@@ -22,6 +22,14 @@ export const store = $state({
   busy: false as boolean,
   toasts: [] as Toast[],
   theme: initTheme() as Theme,
+  // Exposed on the store as well as as named exports: pages call both
+  // `store.toast(...)` and `toast(...)`.
+  toast,
+  errText,
+  connected,
+  probeDevice,
+  applyTheme,
+  toggleTheme,
 });
 
 export function applyTheme(t: Theme) {

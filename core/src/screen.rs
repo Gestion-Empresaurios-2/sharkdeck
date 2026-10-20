@@ -133,7 +133,7 @@ pub fn decode_gif(
             height: gh,
             rgba: buf.into_owned(),
         };
-        let delay_units = (frame.delay as f32).round().clamp(1.0, 255.0) as u8;
+        let delay_units = ((frame.delay as f32) / 10.0).round().clamp(1.0, 255.0) as u8;
         frames.push((scale(&rgba, mode, dw, dh), delay_units));
     }
     let animated = frames.len() > 1;
@@ -405,7 +405,7 @@ pub fn clock_frames(
             t.format("%H:%M").to_string()
         };
         let colon = i % 2 == 0;
-        out.push((clock_frame(&text, w, h, fg, bg, colon), 10)); // 10 units = 1s
+        out.push((clock_frame(&text, w, h, fg, bg, colon), 100)); // 100 centiseconds = 1s
     }
     out
 }

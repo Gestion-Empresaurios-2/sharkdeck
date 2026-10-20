@@ -122,7 +122,14 @@ impl Keyboard {
             let preference = if blessing { 0 } else { 1 };
             let id = match Self::identify(api, &cand.path) {
                 Ok(Some(id)) => id,
-                _ => continue,
+                Ok(None) => {
+                    eprintln!("[sharkdeck] identify {}: no reply", cand.path);
+                    continue;
+                }
+                Err(e) => {
+                    eprintln!("[sharkdeck] identify {}: {e}", cand.path);
+                    continue;
+                }
             };
             if best.as_ref().map(|&(p, _, _)| preference < p).unwrap_or(true) {
                 best = Some((preference, cand.path.clone(), id));
@@ -293,6 +300,33 @@ impl Keyboard {
     /// echo — poll-for-echo never matches and surfaces stale data. Sends the
     /// request, waits, reads once (fresh handle per `with` call avoids the
     /// firmware's cached-response bug the way vendor tools force declines).
+    /// Empirical read-only probe for a battery/percentage opcode.
+    ///
+    /// This family documents no battery read opcode, so try the plausible
+    /// neighbours and accept the first reply that carries a sane percentage
+    /// in one of its leading bytes. Strictly read-only: nothing is written.
+    pub fn battery_probe(&self) -> Result<Option<u8>, String> {
+        // Empirical: no battery read opcode is documented for this family, so
+        // try plausible ones and accept a reply ONLY if it is not a plain
+        // opcode echo and carries a percentage in a plausible field.
+        for op in [0x81u8, 0x82, 0x83, 0x84, 0x8C, 0x8D, 0x8E] {
+            if let Ok(reply) = self.query_raw(op, &[], 60) {
+                if reply[0] == op || reply[0] == 0 {
+                    continue; // echo of our own request / empty reply
+                }
+                if reply[1] <= 100 && reply[2] == 0 && reply[3] == 0 {
+                    return Ok(Some(reply[1]));
+                }
+            }
+        }
+        Ok(None)
+    }
+
+    /// Raw single-shot query used by the battery probe diagnostics.
+    pub fn debug_query(&self, op: u8) -> Result<Payload, String> {
+        self.query_raw(op, &[], 60)
+    }
+
     fn query_raw(&self, op: u8, args: &[u8], wait_ms: u64) -> Result<Payload, String> {
         let req = cmd_bit7(op, args);
         let mut wire = [0u8; FEATURE_LEN];

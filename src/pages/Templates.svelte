@@ -12,7 +12,10 @@
     type CompKind,
   } from '../lib/templates';
   import ScreenPreview from '../components/ScreenPreview.svelte';
+  import TemplateThumb from '../components/TemplateThumb.svelte';
+  import LiveMirror from '../components/LiveMirror.svelte';
   import { configGet, configSet, screenPattern, screenPush, screenAnimPush } from '../lib/tauri';
+  import { startLive } from '../lib/live';
   import type { AppConfig } from '../lib/types';
 
   let cfg: AppConfig | null = $state(null);
@@ -29,22 +32,9 @@
 
   const anim = $derived(templateIsAnimated(tpl));
 
-  /* gallery thumbnails (rendered lazily once on mount) */
-  let urls: Record<string, string> = $state({});
-
-  function png64(t: Template): string {
-    const data = renderTemplate(t, 240, 135, 0);
-    const cv = document.createElement('canvas');
-    cv.width = 240;
-    cv.height = 135;
-    const ctx = cv.getContext('2d') as CanvasRenderingContext2D;
-    ctx.putImageData(new ImageData(data, 240, 135), 0, 0);
-    return cv.toDataURL('image/png').split(',')[1] ?? '';
-  }
-
   onMount(async () => {
     cfg = await configGet().catch(() => null);
-    for (const t of TEMPLATES) urls[t.id] = png64(t);
+    startLive();
   });
 
   function wth(): [number, number] {
@@ -66,6 +56,7 @@
   const KIND_LABEL: Record<CompKind, string> = {
     clock: 'Clock', date: 'Date', ticker: 'Ticker', wave: 'Wave', rain: 'Rain',
     border: 'Frame', eq: 'Equalizer', scanlines: 'Scanlines', fin: 'Brand fin', meter: 'Meter',
+    watch: 'Watch face', datewin: 'Date window', battery: 'Battery', ring: 'Ring', steps: 'Steps',
   };
 
   /** Clock style presets — size = fraction of panel height (null = auto). */
@@ -77,6 +68,18 @@
     { label: 'Auto', size: null },
   ];
 
+  const EXTRA_LABELS: Record<string, string> = {
+    hostbatt: 'Host battery',
+    cpu: 'CPU load',
+    ram: 'RAM',
+    devinfo: 'Keyboard',
+    uptime: 'Uptime',
+  };
+  const ALL_KINDS = [...Object.keys(KIND_LABEL), ...Object.keys(EXTRA_LABELS)];
+  function labelOf(k: string): string {
+    return KIND_LABEL[k as CompKind] ?? EXTRA_LABELS[k] ?? k;
+  }
+
   function addComp(kind: CompKind) {
     const base: Comp = { kind, fg: '#f2f1f0' };
     if (kind === 'ticker') base.text = 'SharkDeck';
@@ -84,6 +87,10 @@
     if (kind === 'rain') base.speed = 6;
     if (kind === 'eq') base.bars = 16;
     if (kind === 'meter') { base.text = 'Label'; base.value = 0.6; }
+    if (kind === 'battery') base.value = 0.8;
+    if (kind === 'ring') base.value = 0.6;
+    if (kind === 'steps') { base.text = '8420'; }
+    if (kind === 'watch') base.fg = '#e8eaf0';
     tpl = { ...tpl, comps: [...tpl.comps, base] };
     refresh();
   }
@@ -175,7 +182,7 @@
         <div class="gallery">
           {#each TEMPLATES as t (t.id)}
             <button class="tpl-card" class:sel={t.id === tpl.id} onclick={() => { tpl = { ...t, comps: t.comps.map((c) => ({ ...c })) }; refresh(); }}>
-              <img src={urls[t.id] ?? ''} alt={t.name} width="120" height="67" />
+              <TemplateThumb tpl={t} w={240} h={135} />
               <span class="tpl-name">{t.name}</span>
               <span class="tpl-desc">{t.desc}</span>
             </button>
@@ -185,7 +192,7 @@
 
       <div class="panel">
         <h3>Preview <span class="muted">{previewW}×{previewH}</span></h3>
-        <ScreenPreview {preview} width={previewW} height={previewH} zoom={2} label={anim ? `${frames} frames · ${tpl.dt}s/frame` : 'still'} />
+        <LiveMirror render={(f) => renderTemplate(tpl, previewW, previewH, f)} w={previewW} h={previewH} fps={tpl.dt >= 1 ? 1 : 2} label={anim ? `Live · ${frames} frames` : 'Live panel'} />
         <div class="row" style="margin-top:10px">
           <button class="btn primary" disabled={busy || !store.device} onclick={() => void push()}>
             {#if busy}<span class="spinner"></span>{/if}
@@ -255,8 +262,8 @@
 
         <div class="row add-row">
           <span class="hint">Add:</span>
-          {#each Object.keys(KIND_LABEL) as k (k)}
-            <button class="chip" onclick={() => addComp(k as CompKind)}>{KIND_LABEL[k as CompKind]}</button>
+          {#each ALL_KINDS as k (k)}
+            <button class="chip" onclick={() => addComp(k as CompKind)}>{labelOf(k)}</button>
           {/each}
         </div>
       </div>

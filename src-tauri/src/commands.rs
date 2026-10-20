@@ -6,7 +6,102 @@ use sharkdeck_core::protocol::{PixelOrder, SlotEntry};
 use sharkdeck_core::screen as scr;
 use std::fs;
 use std::sync::{Arc, Mutex};
+
+/// Read the keyboard's battery level, if this firmware exposes one.
+/// Returns None when no documented/empirical opcode answers.
+#[tauri::command]
+pub fn battery_probe(app: State<AppState>) -> Result<Option<u8>, String> {
+    let kb = kb_of(&app)?;
+    kb.battery_probe()
+}
+
+/// Live desk + device telemetry for on-panel widgets (battery, CPU, RAM,
+/// uptime, host name) plus the keyboard's current state.
+#[tauri::command]
+pub fn host_info(app: State<AppState>) -> Result<serde_json::Value, String> {
+    // Host battery
+    let mut battery: Option<u8> = None;
+    let mut charging = false;
+    if let Ok(entries) = fs::read_dir("/sys/class/power_supply") {
+        for e in entries.flatten() {
+            let p = e.path();
+            let typ = fs::read_to_string(p.join("type")).unwrap_or_default();
+            if !typ.contains("Battery") {
+                continue;
+            }
+            if let Ok(c) = fs::read_to_string(p.join("capacity")) {
+                if let Ok(v) = c.trim().parse::<u8>() {
+                    battery = Some(v);
+                }
+            }
+            let st = fs::read_to_string(p.join("status")).unwrap_or_default();
+            charging = st.trim() == "Charging";
+            break;
+        }
+    }
+
+    // CPU load (1 min average over available cores)
+    let cores = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(1)
+        .max(1);
+    let load1 = fs::read_to_string("/proc/loadavg")
+        .ok()
+        .and_then(|s| s.split_whitespace().next().and_then(|v| v.parse::<f64>().ok()))
+        .unwrap_or(0.0);
+    let cpu = ((load1 / cores as f64) * 100.0).round().clamp(0.0, 100.0) as u8;
+
+    // RAM used
+    let (total_kb, avail_kb) = (|| {
+        let m = fs::read_to_string("/proc/meminfo").ok()?;
+        let g = |k: &str| -> Option<u64> {
+            m.lines()
+                .find(|l| l.starts_with(k))
+                .and_then(|l| l.split_whitespace().nth(1))
+                .and_then(|v| v.parse().ok())
+        };
+        Some((g("MemTotal:")?, g("MemAvailable:")?))
+    })()
+    .unwrap_or((0, 0));
+    let ram = if total_kb > 0 {
+        (((total_kb - avail_kb.min(total_kb)) as f64 / total_kb as f64) * 100.0).round() as u8
+    } else {
+        0
+    };
+
+    let uptime = fs::read_to_string("/proc/uptime")
+        .ok()
+        .and_then(|s| s.split_whitespace().next().and_then(|v| v.parse::<f64>().ok()))
+        .unwrap_or(0.0) as u64;
+    let hostname = fs::read_to_string("/etc/hostname")
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+
+    // Keyboard state (tolerates "no device")
+    let (firmware, profile, effect) = match kb_of(&app) {
+        Ok(kb) => (
+            kb.info().map(|i| i.firmware).unwrap_or_default(),
+            kb.profile_get().unwrap_or(0),
+            kb.light(false).map(|l| l.effect).unwrap_or(255),
+        ),
+        Err(_) => (String::new(), 0, 255),
+    };
+
+    Ok(serde_json::json!({
+        "battery": battery,
+        "charging": charging,
+        "cpu": cpu,
+        "ram": ram,
+        "uptime": uptime,
+        "hostname": hostname,
+        "firmware": firmware,
+        "profile": profile,
+        "effect": effect,
+    }))
+}
 use tauri::Manager;
+use tauri::State;
 
 #[derive(Default)]
 pub struct AppState {
@@ -83,10 +178,12 @@ pub fn probe(app: tauri::State<'_, AppState>) -> Result<Option<serde_json::Value
     // Cold-start races (webview booting while hidraw settles) can make the
     // first enumeration come up empty; retry briefly before giving up.
     let mut fresh = Keyboard::open()?;
+    eprintln!("[sharkdeck] probe: first open -> {}", if fresh.is_some() { "found" } else { "none" });
     if fresh.is_none() {
-        for _ in 0..2 {
-            std::thread::sleep(std::time::Duration::from_millis(700));
+        for i in 0..6 {
+            std::thread::sleep(std::time::Duration::from_millis(800));
             fresh = Keyboard::open()?;
+            eprintln!("[sharkdeck] probe: retry {} -> {}", i + 1, if fresh.is_some() { "found" } else { "none" });
             if fresh.is_some() {
                 break;
             }

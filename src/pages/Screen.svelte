@@ -4,6 +4,9 @@
   import { store, toast, errText, connected } from '../lib/store.svelte';
   import type { AppConfig } from '../lib/types';
   import ScreenPreview from '../components/ScreenPreview.svelte';
+  import LiveMirror from '../components/LiveMirror.svelte';
+  import { renderTemplate, type Template } from '../lib/templates';
+  import { startLive } from '../lib/live';
 
   const PATTERNS: [string, string][] = [
     ['test', 'RGBW quadrants'],
@@ -31,6 +34,32 @@
   let clockSeconds = $state(true);
   let clockFg = $state('#E6E9F2');
   let clockBg = $state('#0A0C12');
+  let clockLive = $state(false);
+
+  // Live mirror of what the keyboard is showing. The device has no screen
+  // read-back, so we mirror exactly what SharkDeck pushes.
+  const clockTpl: Template = {
+    id: 'live-clock',
+    name: 'Live clock',
+    desc: 'Mirrors the clock pushed to the keyboard',
+    bg: '#0A0C12',
+    dt: 1,
+    comps: [{ kind: 'clock', fg: '#E6E9F2', seconds: true, size: 0.5 }],
+  };
+
+  function b64ToRgba(b64: string): Uint8ClampedArray {
+    const bin = atob(b64);
+    const out = new Uint8ClampedArray(bin.length);
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  }
+
+  const clockRender = (f: number) => renderTemplate(clockTpl, previewW, previewH, f);
+  const imageRender = () =>
+    preview
+      ? b64ToRgba(preview)
+      : new Uint8ClampedArray(previewW * previewH * 4);
+  const liveRender = $derived(clockLive ? clockRender : imageRender);
 
   onMount(async () => {
     try {
@@ -42,6 +71,12 @@
     } catch (e) {
       toast('err', errText(e));
     }
+    startLive();
+    // The keyboard loops the frames we push, so refresh the clock about once a
+    // minute to stop it from counting backwards.
+    setInterval(() => {
+      if (clockLive && connected() && !busy) void clockPush(true);
+    }, 55000);
   });
 
   const zoom = $derived(Math.max(2, Math.min(5, Math.floor(previewW / 64) * 2 || 3)));
@@ -66,6 +101,7 @@
       previewW = res.width;
       previewH = res.height;
       lastUpload = path.split('/').pop() ?? path;
+      clockLive = false;
       toast(
         'ok',
         res.animated
@@ -88,6 +124,7 @@
       previewW = res.width;
       previewH = res.height;
       lastUpload = p;
+      clockLive = false;
       toast('ok', `Pattern "${p}" uploaded to slot ${slot}`);
     } catch (e) {
       toast('err', errText(e));
@@ -96,16 +133,19 @@
     }
   }
 
-  async function clockPush() {
+  async function clockPush(silent = false) {
     if (!connected()) return toast('err', 'Probe the device first');
     busy = 'clock';
     try {
       await api.screenClock(clockFrames, clockSeconds, hexToRgb(clockFg), hexToRgb(clockBg));
       preview = '';
       lastUpload = 'clock';
-      toast('ok', `Clock pushed (${clockFrames} frames, ${clockSeconds ? 'HH:MM:SS' : 'HH:MM'})`);
+      clockLive = true;
+      if (!silent) {
+        toast('ok', `Clock pushed (${clockFrames} frames, ${clockSeconds ? 'HH:MM:SS' : 'HH:MM'})`);
+      }
     } catch (e) {
-      toast('err', errText(e));
+      if (!silent) toast('err', errText(e));
     } finally {
       busy = '';
     }
@@ -153,6 +193,21 @@
             </button>
           </div>
         {/if}
+      </div>
+
+      <div class="panel">
+        <h3>On the keyboard now</h3>
+        <LiveMirror
+          render={liveRender}
+          w={previewW}
+          h={previewH}
+          fps={clockLive ? 1 : 2}
+          label={clockLive ? 'Live · clock' : 'Live panel'}
+        />
+        <p class="hint" style="margin:8px 0 0">
+          The keyboard exposes no screen read-back, so this mirrors exactly what SharkDeck sends.
+          {#if clockLive}It refreshes the device clock about once a minute so the loop never counts backwards.{/if}
+        </p>
       </div>
     </div>
 

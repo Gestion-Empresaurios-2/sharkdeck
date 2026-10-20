@@ -2,6 +2,8 @@
 // K86 panel. Every draw is a pure function of (template, components, size,
 // frame index, timestamp) so previews and pushed frames match exactly.
 
+import { live } from './live';
+
 export type CompKind =
   | 'clock'
   | 'date'
@@ -12,7 +14,17 @@ export type CompKind =
   | 'eq'
   | 'scanlines'
   | 'fin'
-  | 'meter';
+  | 'meter'
+  | 'watch'
+  | 'datewin'
+  | 'battery'
+  | 'ring'
+  | 'steps'
+  | 'hostbatt'
+  | 'cpu'
+  | 'ram'
+  | 'devinfo'
+  | 'uptime';
 
 export interface Comp {
   kind: CompKind;
@@ -116,6 +128,58 @@ export const TEMPLATES: Template[] = [
     comps: [
       { kind: 'fin', fg: '#7a7ff0' },
       { kind: 'ticker', text: 'SharkDeck', fg: '#aab4ff', speed: 1 },
+    ],
+  },
+  {
+    id: 'classic-watch',
+    name: 'Classic watch',
+    desc: 'Analog dial, date window, battery',
+    bg: '#0b0d12',
+    dt: 0.5,
+    comps: [
+      { kind: 'watch', fg: '#e8eaf0' },
+      { kind: 'datewin', fg: '#f2f1f0' },
+      { kind: 'battery', fg: '#9fe3b0' },
+      { kind: 'ticker', text: 'SharkDeck', fg: '#e95420', speed: 1 },
+    ],
+  },
+  {
+    id: 'pixel-watch',
+    name: 'Pixel watch',
+    desc: 'Green 8-bit dial with widgets around',
+    bg: '#0d1411',
+    dt: 0.5,
+    comps: [
+      { kind: 'watch', fg: '#7ef0c0' },
+      { kind: 'battery', fg: '#7ef0c0' },
+      { kind: 'ring', fg: '#e95420', value: 0.64 },
+      { kind: 'steps', fg: '#7ef0c0', text: '8.4k' },
+    ],
+  },
+  {
+    id: 'digital-watch',
+    name: 'Digital watch',
+    desc: 'Big digits ringed by date + battery',
+    bg: '#05070a',
+    dt: 1,
+    comps: [
+      { kind: 'border', fg: '#2a3240' },
+      { kind: 'clock', fg: '#f2f1f0', seconds: false, size: 0.40 },
+      { kind: 'datewin', fg: '#e95420' },
+      { kind: 'battery', fg: '#9fe3b0' },
+      { kind: 'ring', fg: '#5b8cff', value: 0.42 },
+    ],
+  },
+  {
+    id: 'chrono-watch',
+    name: 'Chronograph',
+    desc: 'Dial, progress ring, date line',
+    bg: '#0a0a0c',
+    dt: 0.5,
+    comps: [
+      { kind: 'watch', fg: '#f0efe9' },
+      { kind: 'ring', fg: '#e95420', value: 0.78 },
+      { kind: 'date', fg: '#8e97a8' },
     ],
   },
 ];
@@ -320,6 +384,196 @@ export function renderTemplate(t: Template, w: number, h: number, frame: number)
         ctx.closePath();
         ctx.fillStyle = withAlpha(fg, 0.92);
         ctx.fill();
+        break;
+      }
+      // ------------------------------------------------- analog watch face
+      case 'watch': {
+        const d = new Date(Date.now() + frame * t.dt * 1000);
+        const cx = w / 2;
+        const cy = h / 2;
+        const R = Math.min(w, h) * 0.42;
+        const accent = hex(c.fg ?? '#f2f1f0');
+        // bezel
+        ctx.strokeStyle = withAlpha(accent, 0.30);
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(cx, cy, R, 0, Math.PI * 2);
+        ctx.stroke();
+        // minute ticks + hour markers
+        for (let i = 0; i < 60; i++) {
+          const a = (i / 60) * Math.PI * 2;
+          const major = i % 5 === 0;
+          const len = major ? R * 0.13 : R * 0.06;
+          const wid = major ? 2 : 1;
+          ctx.save();
+          ctx.translate(cx, cy);
+          ctx.rotate(a - Math.PI / 2);
+          ctx.fillStyle = withAlpha(accent, major ? 0.95 : 0.42);
+          ctx.fillRect(-wid / 2, -R, wid, len);
+          ctx.restore();
+        }
+        // hands
+        const ms = d.getMilliseconds() / 1000;
+        const sec = d.getSeconds() + ms;
+        const min = d.getMinutes() + sec / 60;
+        const hr = (d.getHours() % 12) + min / 60;
+        const hand = (turns: number, len: number, wid: number, col: [number, number, number]) => {
+          ctx.save();
+          ctx.translate(cx, cy);
+          ctx.rotate(turns * Math.PI * 2 - Math.PI / 2);
+          ctx.fillStyle = withAlpha(col, 1);
+          ctx.fillRect(-wid / 2, -len, wid, len);
+          ctx.restore();
+        };
+        hand(hr / 12, R * 0.48, 4, accent);
+        hand(min / 60, R * 0.72, 3, accent);
+        hand(sec / 60, R * 0.80, 1, hex('#e95420'));
+        // cap
+        ctx.fillStyle = withAlpha(accent, 1);
+        ctx.beginPath();
+        ctx.arc(cx, cy, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+        break;
+      }
+      // ------------------------------------------------- date window
+      case 'datewin': {
+        const d = new Date(Date.now() + frame * t.dt * 1000);
+        const R = Math.min(w, h) * 0.42;
+        const bw = Math.max(15, Math.round(R * 0.44));
+        const bh = Math.max(11, Math.round(R * 0.30));
+        const cx = w / 2 + R * 0.56;
+        const cy = h / 2;
+        ctx.fillStyle = withAlpha([0, 0, 0], 0.55);
+        ctx.fillRect(cx - bw / 2, cy - bh / 2, bw, bh);
+        ctx.strokeStyle = withAlpha(fg, 0.35);
+        ctx.lineWidth = 1;
+        ctx.strokeRect(cx - bw / 2 + 0.5, cy - bh / 2 + 0.5, bw - 1, bh - 1);
+        ctx.font = `bold ${Math.floor(bh * 0.78)}px ${UI}`;
+        ctx.fillStyle = withAlpha(fg, 1);
+        ctx.fillText(String(d.getDate()), cx, cy);
+        break;
+      }
+      // ------------------------------------------------- battery gauge
+      case 'battery': {
+        const bw = Math.max(20, Math.floor(w * 0.14));
+        const bh = Math.max(10, Math.floor(h * 0.11));
+        const x = 7;
+        const y = 7;
+        const pct = Math.max(0, Math.min(1, c.value ?? 0.82));
+        ctx.strokeStyle = withAlpha(fg, 0.85);
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x + 0.5, y + 0.5, bw, bh);
+        ctx.fillRect(x + bw + 1, y + bh / 3, 2, bh / 3);
+        ctx.fillStyle = withAlpha(fg, 0.9);
+        ctx.fillRect(x + 2, y + 2, Math.max(1, (bw - 4) * pct), bh - 4);
+        break;
+      }
+      // ------------------------------------------------- progress ring
+      case 'ring': {
+        const v = Math.max(0, Math.min(1, c.value ?? 0.6));
+        const R = Math.min(w, h) * 0.20;
+        const cx = w - R - 9;
+        const cy = R + 9;
+        ctx.strokeStyle = withAlpha(fg, 0.22);
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.arc(cx, cy, R, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.strokeStyle = withAlpha(fg, 0.95);
+        ctx.beginPath();
+        ctx.arc(cx, cy, R, -Math.PI / 2, -Math.PI / 2 + v * Math.PI * 2);
+        ctx.stroke();
+        break;
+      }
+      // ------------------------------------------------- step counter
+      case 'steps': {
+        ctx.font = `${Math.floor(h * 0.13)}px ${MONO}`;
+        ctx.textAlign = 'left';
+        ctx.fillStyle = withAlpha(fg, 0.9);
+        ctx.fillText(c.text ?? '8.4k', 8, h - 8);
+        ctx.textAlign = 'center';
+        break;
+      }
+      // ------------------------------------------------- host battery
+      case 'hostbatt': {
+        const info = live.info;
+        const pct = info?.battery ?? null;
+        const bw = Math.max(20, Math.floor(w * 0.15));
+        const bh = Math.max(10, Math.floor(h * 0.11));
+        const x = 7;
+        const y = 7;
+        ctx.strokeStyle = withAlpha(fg, 0.85);
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x + 0.5, y + 0.5, bw, bh);
+        ctx.fillRect(x + bw + 1, y + bh / 3, 2, bh / 3);
+        if (pct !== null) {
+          ctx.fillStyle = withAlpha(fg, 0.92);
+          ctx.fillRect(x + 2, y + 2, Math.max(1, ((bw - 4) * pct) / 100), bh - 4);
+          ctx.font = `${Math.floor(h * 0.11)}px ${MONO}`;
+          ctx.textAlign = 'left';
+          ctx.fillStyle = withAlpha(fg, 0.95);
+          ctx.fillText(`${pct}%${info?.charging ? '+' : ''}`, x + bw + 7, y + bh);
+          ctx.textAlign = 'center';
+        }
+        break;
+      }
+      // ------------------------------------------------- cpu load
+      case 'cpu': {
+        const pct = live.info?.cpu ?? 0;
+        const bw = Math.max(26, Math.floor(w * 0.17));
+        const bh = Math.max(7, Math.floor(h * 0.08));
+        const x = 7;
+        const y = 7;
+        ctx.fillStyle = withAlpha(fg, 0.18);
+        ctx.fillRect(x, y, bw, bh);
+        ctx.fillStyle = withAlpha(fg, 0.95);
+        ctx.fillRect(x, y, Math.max(1, (bw * pct) / 100), bh);
+        ctx.font = `${Math.floor(h * 0.1)}px ${MONO}`;
+        ctx.textAlign = 'left';
+        ctx.fillStyle = withAlpha(fg, 0.9);
+        ctx.fillText(`CPU ${pct}%`, x, y + bh + Math.floor(h * 0.12));
+        ctx.textAlign = 'center';
+        break;
+      }
+      // ------------------------------------------------- ram load
+      case 'ram': {
+        const pct = live.info?.ram ?? 0;
+        const bw = Math.max(26, Math.floor(w * 0.17));
+        const bh = Math.max(7, Math.floor(h * 0.08));
+        const x = 7;
+        const y = 7 + Math.floor(h * 0.2);
+        ctx.fillStyle = withAlpha(fg, 0.18);
+        ctx.fillRect(x, y, bw, bh);
+        ctx.fillStyle = withAlpha(fg, 0.95);
+        ctx.fillRect(x, y, Math.max(1, (bw * pct) / 100), bh);
+        ctx.font = `${Math.floor(h * 0.1)}px ${MONO}`;
+        ctx.textAlign = 'left';
+        ctx.fillStyle = withAlpha(fg, 0.9);
+        ctx.fillText(`RAM ${pct}%`, x, y + bh + Math.floor(h * 0.12));
+        ctx.textAlign = 'center';
+        break;
+      }
+      // ------------------------------------------------- keyboard state
+      case 'devinfo': {
+        const info = live.info;
+        const label = info && info.firmware ? `K86 fw ${info.firmware} · P${info.profile + 1}` : 'K86';
+        ctx.font = `${Math.floor(h * 0.1)}px ${MONO}`;
+        ctx.textAlign = 'left';
+        ctx.fillStyle = withAlpha(fg, 0.9);
+        ctx.fillText(label, 8, h - 8);
+        ctx.textAlign = 'center';
+        break;
+      }
+      // ------------------------------------------------- host uptime
+      case 'uptime': {
+        const s = live.info?.uptime ?? 0;
+        const hh = Math.floor(s / 3600);
+        const mm = Math.floor((s % 3600) / 60);
+        ctx.font = `${Math.floor(h * 0.1)}px ${MONO}`;
+        ctx.textAlign = 'left';
+        ctx.fillStyle = withAlpha(fg, 0.9);
+        ctx.fillText(`UP ${hh}h ${String(mm).padStart(2, '0')}m`, 8, h - 8);
+        ctx.textAlign = 'center';
         break;
       }
     }

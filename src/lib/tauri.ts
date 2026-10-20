@@ -99,3 +99,19 @@ export function keymapBackup(path: string, profile: number) {
 export function keymapRestore(path: string) {
   return invoke<number>('keymap_restore', { path });
 }
+
+export const batteryProbe = () => invoke<number | null>('battery_probe');
+
+export type HostInfo = {
+  battery: number | null;
+  charging: boolean;
+  cpu: number;
+  ram: number;
+  uptime: number;
+  hostname: string;
+  firmware: string;
+  profile: number;
+  effect: number;
+};
+
+export const hostInfo = () => invoke<HostInfo>('host_info');

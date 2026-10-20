@@ -39,6 +39,8 @@ pub fn run() {
             commands::screen_pattern,
             commands::screen_clock,
             commands::screen_anim_push,
+            commands::battery_probe,
+            commands::host_info,
             commands::pick_open_image,
             commands::pick_open_json,
             commands::pick_save_file,

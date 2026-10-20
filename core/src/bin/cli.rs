@@ -99,6 +99,7 @@ fn run(cmd: &str, args: &[String]) -> i32 {
         "screen-clock" => cmd_clock(args),
         "display" => cmd_display(),
         "display-probe" => cmd_display_probe(),
+        "battery" => cmd_battery(),
         "macro-get" => {
             cmd_macro_get(args.first().and_then(|s| s.parse().ok()).unwrap_or(0))
         }
@@ -430,6 +431,25 @@ fn cmd_display() -> i32 {
             Ok(None) => Err("display: no valid reply".into()),
             Err(e) => Err(format!("display: {e}")),
         }
+    })
+}
+
+/// Empirical battery probe: tries undocumented read-only opcodes and reports
+/// the first reply that looks like a percentage.
+fn cmd_battery() -> i32 {
+    with_kb(|kb| {
+        // Raw dumps first so a false positive can be spotted by eye.
+        for op in [0x81u8, 0x82, 0x83, 0x84, 0x8C, 0x8D, 0x8E] {
+            match kb.debug_query(op) {
+                Ok(r) => println!("op {op:#04x} -> {:02x?}", &r[..8.min(r.len())]),
+                Err(e) => println!("op {op:#04x} -> err {e}"),
+            }
+        }
+        let r = kb.battery_probe()?;
+        Ok(match r {
+            Some(p) => format!("battery: {p}%"),
+            None => "battery: no readable percentage (device may be USB-powered)".into(),
+        })
     })
 }
 

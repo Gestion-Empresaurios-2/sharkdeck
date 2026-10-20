@@ -56,6 +56,23 @@ sudo udevadm control --reload && sudo udevadm trigger
 
 Replug the keyboard. If a slot write was interrupted, the firmware may hold stale caches — replug once and retry.
 
+### Native knob events (optional)
+
+The firmware exposes the knob as a **mouse-style HID device** — the kernel
+creates `ROYUAN Gaming Keyboard Mouse` (`/dev/input/event12`) with relative
+axes (X/Y/Z/RY/DIAL/WHEEL) plus buttons. Reading those events (so the app can
+show live knob turns, or bind them to actions) needs membership of the
+`input` group:
+
+```bash
+sudo gpasswd -a "$USER" input   # then log out and back in (or: newgrp input)
+```
+
+Without it, the *Device → Native knob* panel reports a permission error; every
+other feature works fine. The raw `hidraw` path also works but only while the
+device is actively sending reports.
+
+
 ## CLI
 
 The low-level tool is built alongside (`target/release/sharkdeck-cli`) and doubles as the end-to-end protocol test rig:

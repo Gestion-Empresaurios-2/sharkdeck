@@ -6,10 +6,12 @@
   import Keymap from './pages/Keymap.svelte';
   import Macros from './pages/Macros.svelte';
   import Templates from './pages/Templates.svelte';
+  import Os from './pages/Os.svelte';
   import Settings from './pages/Settings.svelte';
   import { onMount } from 'svelte';
 
   const PAGES = [
+    { id: 'os', label: 'Screen OS' },
     { id: 'screen', label: 'Screen' },
     { id: 'templates', label: 'Templates' },
     { id: 'knob', label: 'Knob' },
@@ -21,6 +23,7 @@
 
   // Minimal flat line icons (16x16, stroke) — GNOME-ish, no fills, no gradients.
   const ICONS: Record<string, string> = {
+    os: 'M2 2h12v12H2z M5 5h6v6H5z',
     screen: 'M2 3h12v8H2z M6 14h4 M8 11v3',
     templates: 'M2 2h5v5H2z M9 2h5v5H9z M2 9h5v5H2z M9 9h5v5H9z',
     knob: 'M8 2a6 6 0 016 6 6 6 0 01-6 6 6 6 0 01-6-6 6 6 0 016-6z M8 8m-2 0a2 2 0 104 0 2 2 0 10-4 0',
@@ -91,7 +94,9 @@
   </aside>
 
   <main>
-    {#if store.page === 'screen'}
+    {#if store.page === 'os'}
+      <Os />
+    {:else if store.page === 'screen'}
       <Screen />
     {:else if store.page === 'templates'}
       <Templates />

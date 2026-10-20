@@ -22,11 +22,11 @@
   --warn: #c35503;
   --err: #d71c2d;
 
-  --radius: 12px;
-  --radius-sm: 6px;
-  --shadow: 0 1px 2px rgba(0, 0, 0, 0.05), 0 2px 8px rgba(0, 0, 0, 0.04);
+  --radius: 14px;
+  --radius-sm: 8px;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 8px 24px rgba(0, 0, 0, 0.06);
 
-  --font: 'Ubuntu', 'Cantarell', -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', 'Ubuntu', 'Cantarell', 'Segoe UI', sans-serif;
   --mono: 'Ubuntu Mono', 'SF Mono', 'JetBrains Mono', 'Fira Code', Consolas, monospace;
 
   /* derived surfaces */

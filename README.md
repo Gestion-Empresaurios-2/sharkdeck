@@ -56,22 +56,26 @@ sudo udevadm control --reload && sudo udevadm trigger
 
 Replug the keyboard. If a slot write was interrupted, the firmware may hold stale caches — replug once and retry.
 
-### Native knob events (optional)
+### Native knob events
 
-The firmware exposes the knob as a **mouse-style HID device** — the kernel
-creates `ROYUAN Gaming Keyboard Mouse` (`/dev/input/event12`) with relative
-axes (X/Y/Z/RY/DIAL/WHEEL) plus buttons. Reading those events (so the app can
-show live knob turns, or bind them to actions) needs membership of the
-`input` group:
+The firmware reports the knob as **consumer-control key events** on the
+keyboard's "Consumer Control" node: `115` (volume up) = turn right,
+`114` (volume down) = turn left, `113` (mute) = press — matching the
+on-device slots 96 / 97 / 78. SharkDeck reads them directly.
+
+A udev rule gives your user read access to the keyboard's input nodes (no
+membership of the privileged `input` group needed):
 
 ```bash
-sudo gpasswd -a "$USER" input   # then log out and back in (or: newgrp input)
+sudo tee /etc/udev/rules.d/92-sharkdeck-input.rules >/dev/null <<'EOF'
+SUBSYSTEM=="input", ATTRS{idVendor}=="3151", ATTRS{idProduct}=="4015", MODE="0660", GROUP="plugdev", TAG+="uaccess"
+EOF
+sudo udevadm control --reload && sudo udevadm trigger --subsystem-match=input
 ```
 
-Without it, the *Device → Native knob* panel reports a permission error; every
-other feature works fine. The raw `hidraw` path also works but only while the
-device is actively sending reports.
-
+Then open *Device → Native knob* (or *Knob → Native knob*) and press
+"Listen 5 s" while turning the knob. If the nodes are still unreadable,
+replug the keyboard so udev re-applies the rule.
 
 ## CLI
 

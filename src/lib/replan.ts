@@ -180,8 +180,9 @@ export const RE_ITEMS: ReItem[] = [
     id: 'no-knob-listener',
     track: 'Native OS',
     title: 'Native knob listener (evdev + raw HID fallback)',
-    status: 'open',
-    note: 'Needs the user in the "input" group, or a live raw capture to decode.',
+    status: 'done',
+    note:
+      'Solved: the knob arrives as consumer-control keys (115 = turn right, 114 = turn left, 113 = press) on the Consumer Control node. A udev rule now gives plugdev read access to the keyboard input nodes, so no "input" group is needed.',
   },
   {
     id: 'no-menu',

@@ -40,8 +40,8 @@
   <aside>
     <div class="brand">
       <div class="brand-tile">
-        <svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true">
-          <path d="M12 1.6 C 10 6 6 12 2.6 19.6 C 7 20.4 15 20.2 20.4 18.4 C 18.6 12.4 16.2 6.2 12 1.6 Z" fill="#6b76fa"/>
+        <svg viewBox="0 0 24 24" width="42" height="42" aria-hidden="true">
+          <path d="M13.4 1.2 C 11.4 6.4 6.8 12.4 3.6 21.2 C 8 21.4 14.6 21.2 19.4 20.6 C 18.9 13 16.8 5.6 13.4 1.2 Z" fill="#6b76fa"/>
         </svg>
       </div>
       <div>
@@ -141,11 +141,11 @@
   .brand-tile {
     width: 46px;
     height: 46px;
-    border-radius: 12px;
+    border-radius: 11px;
     background: #20253a;
     display: grid;
     place-items: center;
-    border: 1px solid rgba(0, 0, 0, 0.2);
+    overflow: hidden;
     flex-shrink: 0;
   }
   .brand-name {

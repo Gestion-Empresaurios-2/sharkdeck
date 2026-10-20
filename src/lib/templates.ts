@@ -26,6 +26,25 @@ export type CompKind =
   | 'devinfo'
   | 'uptime';
 
+/**
+ * Layout slots — a HyperOS-lock-screen style grid of anchor positions.
+ * Widgets are assigned to a slot; the slot decides where they land.
+ */
+export type SlotId = 'tl' | 'tr' | 'c' | 'bl' | 'br' | 'bar' | 'l' | 'r';
+
+export const SLOT_IDS: SlotId[] = ['tl', 'tr', 'c', 'bl', 'br', 'bar', 'l', 'r'];
+
+export const SLOT_LABEL: Record<SlotId, string> = {
+  tl: 'Top left',
+  tr: 'Top right',
+  c: 'Centre',
+  bl: 'Bottom left',
+  br: 'Bottom right',
+  bar: 'Bottom bar',
+  l: 'Left',
+  r: 'Right',
+};
+
 export interface Comp {
   kind: CompKind;
   text?: string;   // ticker / meter label
@@ -38,6 +57,23 @@ export interface Comp {
   value?: number;  // meter 0..1
   bars?: number;   // eq bars
   batteryStyle?: 'segments' | 'ios'; // battery glyph style
+  slot?: SlotId;   // layout slot this widget is pinned to
+}
+
+/**
+ * A layout = a set of widget positions + a clock treatment, in the spirit of
+ * a phone lock screen: pick a layout, then drop widgets into its slots.
+ */
+export interface LayoutDef {
+  id: string;
+  name: string;
+  desc: string;
+  /** slots this layout offers */
+  slots: SlotId[];
+  /** default clock placement + size (fraction of panel height) */
+  clock: { slot: SlotId; size: number };
+  /** widgets the layout starts with (kind + default slot) */
+  widgets: { kind: CompKind; slot: SlotId; text?: string; fg?: string }[];
 }
 
 export interface Template {
@@ -48,11 +84,282 @@ export interface Template {
   comps: Comp[];
   /** seconds per pushed frame (drives device delay byte) */
   dt: number;
+  /** available layouts (templates without layouts keep their fixed composition) */
+  layouts?: LayoutDef[];
+  /** active layout id */
+  layout?: string;
 }
 
 /* ------------------------------------------------------------------ */
 /* Built-in gallery                                                    */
 /* ------------------------------------------------------------------ */
+
+
+/* ------------------------------------------------------------------ */
+/* Layout-driven templates (HyperOS lock-screen style)                 */
+/* ------------------------------------------------------------------ */
+
+/** Build a template whose widgets come from its first layout. */
+function mk(
+  id: string,
+  name: string,
+  desc: string,
+  bg: string,
+  dt: number,
+  layouts: LayoutDef[],
+): Template {
+  return {
+    id,
+    name,
+    desc,
+    bg,
+    dt,
+    layouts,
+    layout: layouts[0].id,
+    comps: compsFromLayout(layouts[0]),
+  };
+}
+
+const LAYOUT_LOCK_CLASSIC: LayoutDef[] = [
+  {
+    id: 'classic',
+    name: 'Classic',
+    desc: 'Big clock centred, widgets around the edges',
+    slots: ['tl', 'tr', 'c', 'bl', 'br', 'bar'],
+    clock: { slot: 'c', size: 0.42 },
+    widgets: [
+      { kind: 'date', slot: 'tl' },
+      { kind: 'hostbatt', slot: 'tr' },
+      { kind: 'ticker', slot: 'bar', text: 'SharkDeck' },
+      { kind: 'devinfo', slot: 'bl' },
+      { kind: 'uptime', slot: 'br' },
+    ],
+  },
+  {
+    id: 'split',
+    name: 'Split',
+    desc: 'Clock hugging the left edge, data column on the right',
+    slots: ['tl', 'tr', 'l', 'r', 'bl', 'br'],
+    clock: { slot: 'l', size: 0.46 },
+    widgets: [
+      { kind: 'date', slot: 'tr' },
+      { kind: 'hostbatt', slot: 'r' },
+      { kind: 'cpu', slot: 'bl' },
+      { kind: 'ram', slot: 'br' },
+    ],
+  },
+  {
+    id: 'corner',
+    name: 'Corner',
+    desc: 'Clock pinned to the top-left, everything else minimal',
+    slots: ['tl', 'tr', 'bl', 'br'],
+    clock: { slot: 'tl', size: 0.34 },
+    widgets: [
+      { kind: 'hostbatt', slot: 'tr' },
+      { kind: 'ticker', slot: 'br', text: 'SharkDeck' },
+    ],
+  },
+];
+
+const LAYOUT_LOCK_FOCUS: LayoutDef[] = [
+  {
+    id: 'focus',
+    name: 'Focus',
+    desc: 'One big clock, one ring, nothing else',
+    slots: ['c', 'tr', 'bl'],
+    clock: { slot: 'c', size: 0.52 },
+    widgets: [
+      { kind: 'ring', slot: 'tr' },
+      { kind: 'date', slot: 'bl' },
+    ],
+  },
+  {
+    id: 'cards',
+    name: 'Cards',
+    desc: 'Clock plus two stacked info cards',
+    slots: ['tl', 'tr', 'bl', 'br'],
+    clock: { slot: 'tl', size: 0.36 },
+    widgets: [
+      { kind: 'hostbatt', slot: 'tr' },
+      { kind: 'cpu', slot: 'bl' },
+      { kind: 'ram', slot: 'br' },
+    ],
+  },
+];
+
+const LAYOUT_LOCK_WEATHER: LayoutDef[] = [
+  {
+    id: 'big',
+    name: 'Big',
+    desc: 'Large clock with a wide ticker band',
+    slots: ['c', 'tl', 'tr', 'bar'],
+    clock: { slot: 'c', size: 0.44 },
+    widgets: [
+      { kind: 'ticker', slot: 'bar', text: 'SharkDeck  ·  21C  ·  clear' },
+      { kind: 'hostbatt', slot: 'tl' },
+      { kind: 'devinfo', slot: 'tr' },
+    ],
+  },
+  {
+    id: 'compact',
+    name: 'Compact',
+    desc: 'Small clock tucked into the corner',
+    slots: ['tl', 'tr', 'bl', 'br'],
+    clock: { slot: 'tl', size: 0.26 },
+    widgets: [
+      { kind: 'ticker', slot: 'br', text: 'SharkDeck' },
+      { kind: 'hostbatt', slot: 'tr' },
+    ],
+  },
+];
+
+const LAYOUT_LOCK_AGENDA: LayoutDef[] = [
+  {
+    id: 'agenda',
+    name: 'Agenda',
+    desc: 'Clock on the left, agenda list on the right',
+    slots: ['l', 'r', 'tr', 'br'],
+    clock: { slot: 'l', size: 0.4 },
+    widgets: [
+      { kind: 'ticker', slot: 'r', text: '09:30 standup' },
+      { kind: 'date', slot: 'tr' },
+      { kind: 'devinfo', slot: 'br' },
+    ],
+  },
+  {
+    id: 'split',
+    name: 'Split',
+    desc: 'Clock up top, agenda underneath',
+    slots: ['c', 'bar', 'bl', 'br'],
+    clock: { slot: 'c', size: 0.34 },
+    widgets: [
+      { kind: 'ticker', slot: 'bar', text: '09:30 standup' },
+      { kind: 'hostbatt', slot: 'bl' },
+      { kind: 'uptime', slot: 'br' },
+    ],
+  },
+];
+
+const LAYOUT_LOCK_MUSIC: LayoutDef[] = [
+  {
+    id: 'art',
+    name: 'Art',
+    desc: 'Clock left, equaliser art right',
+    slots: ['l', 'r', 'tl', 'br'],
+    clock: { slot: 'l', size: 0.38 },
+    widgets: [
+      { kind: 'eq', slot: 'r' },
+      { kind: 'ticker', slot: 'br', text: 'now playing' },
+    ],
+  },
+  {
+    id: 'minimal',
+    name: 'Minimal',
+    desc: 'Clock centred, tiny hints',
+    slots: ['c', 'tl', 'br'],
+    clock: { slot: 'c', size: 0.48 },
+    widgets: [
+      { kind: 'ticker', slot: 'br', text: 'now playing' },
+      { kind: 'hostbatt', slot: 'tl' },
+    ],
+  },
+];
+
+const LAYOUT_LOCK_BATTERY: LayoutDef[] = [
+  {
+    id: 'cell',
+    name: 'Cell',
+    desc: 'Big battery cell with a corner clock',
+    slots: ['tl', 'c', 'bl', 'br'],
+    clock: { slot: 'tl', size: 0.3 },
+    widgets: [
+      { kind: 'battery', slot: 'c' },
+      { kind: 'hostbatt', slot: 'br' },
+      { kind: 'devinfo', slot: 'bl' },
+    ],
+  },
+  {
+    id: 'row',
+    name: 'Row',
+    desc: 'Clock centred, battery row underneath',
+    slots: ['c', 'bar', 'tl', 'tr'],
+    clock: { slot: 'c', size: 0.34 },
+    widgets: [
+      { kind: 'battery', slot: 'bar' },
+      { kind: 'hostbatt', slot: 'tl' },
+      { kind: 'steps', slot: 'tr', text: '8.4k' },
+    ],
+  },
+];
+
+const LAYOUT_NEON_CITY: LayoutDef[] = [
+  {
+    id: 'horizon',
+    name: 'Horizon',
+    desc: 'City skyline silhouette under a wide clock',
+    slots: ['tl', 'tr', 'bar', 'bl'],
+    clock: { slot: 'tl', size: 0.32 },
+    widgets: [
+      { kind: 'wave', slot: 'bar' },
+      { kind: 'hostbatt', slot: 'tr' },
+      { kind: 'ticker', slot: 'bl', text: 'SharkDeck' },
+    ],
+  },
+];
+
+const LAYOUT_TERMINAL: LayoutDef[] = [
+  {
+    id: 'terminal',
+    name: 'Terminal',
+    desc: 'Amber terminal readout',
+    slots: ['tl', 'tr', 'bl', 'br'],
+    clock: { slot: 'tl', size: 0.32 },
+    widgets: [
+      { kind: 'ticker', slot: 'br', text: '$ sharkdeck --status' },
+      { kind: 'devinfo', slot: 'bl' },
+      { kind: 'uptime', slot: 'tr' },
+    ],
+  },
+];
+
+const LAYOUT_DEVOPS: LayoutDef[] = [
+  {
+    id: 'stack',
+    name: 'Stack',
+    desc: 'Clock on top, CPU/RAM stacked below',
+    slots: ['tl', 'tr', 'bl', 'br'],
+    clock: { slot: 'tl', size: 0.3 },
+    widgets: [
+      { kind: 'cpu', slot: 'tr' },
+      { kind: 'ram', slot: 'bl' },
+      { kind: 'devinfo', slot: 'br' },
+    ],
+  },
+  {
+    id: 'split',
+    name: 'Split',
+    desc: 'Clock left, metrics right',
+    slots: ['l', 'r', 'tr', 'br'],
+    clock: { slot: 'l', size: 0.34 },
+    widgets: [
+      { kind: 'cpu', slot: 'r' },
+      { kind: 'ram', slot: 'br' },
+      { kind: 'hostbatt', slot: 'tr' },
+    ],
+  },
+];
+
+const LAYOUT_TEMPLATES: Template[] = [
+  mk('lock-classic', 'Lock · Classic', 'HyperOS-style lock screen, three layouts', '#0b0e14', 1, LAYOUT_LOCK_CLASSIC),
+  mk('lock-focus', 'Lock · Focus', 'Distraction-free clock with cards', '#0d0f14', 1, LAYOUT_LOCK_FOCUS),
+  mk('lock-weather', 'Lock · Weather', 'Clock plus a status ticker', '#0a1014', 1, LAYOUT_LOCK_WEATHER),
+  mk('lock-agenda', 'Lock · Agenda', 'Day planner on the panel', '#101218', 1, LAYOUT_LOCK_AGENDA),
+  mk('lock-music', 'Lock · Music', 'Now playing with equaliser art', '#120d12', 1, LAYOUT_LOCK_MUSIC),
+  mk('lock-battery', 'Lock · Battery', 'Battery monitor for the panel', '#0d120e', 1, LAYOUT_LOCK_BATTERY),
+  mk('neon-city', 'Neon City', 'Skyline silhouette with a wide clock', '#150d1c', 1, LAYOUT_NEON_CITY),
+  mk('terminal-amber', 'Terminal Amber', 'Amber console readout', '#140f06', 1, LAYOUT_TERMINAL),
+  mk('devops', 'DevOps', 'CPU, RAM and keyboard state', '#0b1216', 2, LAYOUT_DEVOPS),
+];
 
 export const TEMPLATES: Template[] = [
   {
@@ -183,6 +490,7 @@ export const TEMPLATES: Template[] = [
       { kind: 'date', fg: '#8e97a8' },
     ],
   },
+  ...LAYOUT_TEMPLATES,
 ];
 
 /** Animation-per-frame components (only these vary with frame index). */
@@ -287,6 +595,52 @@ function rand(seed: number): number {
   return ((x >>> 0) % 10000) / 10000;
 }
 
+/**
+ * Resolve a widget slot into a pixel anchor + text alignment.
+ * Layouts are the lock-screen style grid: corners, edges, centre.
+ */
+function anchor(
+  slot: SlotId | undefined,
+  w: number,
+  h: number,
+  fallback: SlotId,
+): { x: number; y: number; align: CanvasTextAlign; base: CanvasTextBaseline } {
+  const m = 8;
+  switch (slot ?? fallback) {
+    case 'tl': return { x: m, y: m, align: 'left', base: 'top' };
+    case 'tr': return { x: w - m, y: m, align: 'right', base: 'top' };
+    case 'bl': return { x: m, y: h - m, align: 'left', base: 'bottom' };
+    case 'br': return { x: w - m, y: h - m, align: 'right', base: 'bottom' };
+    case 'bar': return { x: w / 2, y: h - m, align: 'center', base: 'bottom' };
+    case 'l': return { x: m, y: h / 2, align: 'left', base: 'middle' };
+    case 'r': return { x: w - m, y: h / 2, align: 'right', base: 'middle' };
+    case 'c':
+    default: return { x: w / 2, y: h / 2, align: 'center', base: 'middle' };
+  }
+}
+
+/** Active layout of a template (undefined for fixed-composition templates). */
+export function activeLayout(t: Template): LayoutDef | undefined {
+  if (!t.layouts || t.layouts.length === 0) return undefined;
+  return t.layouts.find((l) => l.id === t.layout) ?? t.layouts[0];
+}
+
+/** Build a widget set from a layout definition (clock first, then widgets). */
+export function compsFromLayout(l: LayoutDef): Comp[] {
+  const comps: Comp[] = [
+    { kind: 'clock', fg: '#f2f1f0', seconds: false, size: l.clock.size, slot: l.clock.slot },
+  ];
+  for (const wd of l.widgets) {
+    const c: Comp = { kind: wd.kind, slot: wd.slot, fg: wd.fg ?? '#c7cdd8' };
+    if (wd.text) c.text = wd.text;
+    if (wd.kind === 'battery') c.value = 0.82;
+    if (wd.kind === 'ring') c.value = 0.6;
+    if (wd.kind === 'meter') c.value = 0.6;
+    comps.push(c);
+  }
+  return comps;
+}
+
 export function renderTemplate(t: Template, w: number, h: number, frame: number): Uint8ClampedArray {
   // OffscreenCanvas is unavailable on ancient webkit; fall back to a DOM canvas.
   let ctx: CanvasRenderingContext2D
@@ -316,19 +670,33 @@ export function renderTemplate(t: Template, w: number, h: number, frame: number)
         const blink = secs && frame % 2 === 1;
         const text = `${String(d.getHours()).padStart(2, '0')}${blink ? ' ' : ':'}${String(d.getMinutes()).padStart(2, '0')}${secs ? (blink ? ' ' : ':') + String(d.getSeconds()).padStart(2, '0') : ''}`;
         const big = !secs && (clockIdx === i);
-        const size = Math.floor(h * (c.size ?? (big ? 0.52 : 0.30)));
+        const lay = activeLayout(t);
+        const defSize = lay ? lay.clock.size : (big ? 0.52 : 0.30);
+        const defSlot: SlotId = lay ? lay.clock.slot : 'c';
+        const size = Math.floor(h * (c.size ?? defSize));
+        const a = anchor(c.slot ?? defSlot, w, h, 'c');
+        if (!lay && big) a.y = h * 0.62;
         ctx.font = `bold ${size}px ${MONO}`;
+        ctx.textAlign = a.align;
+        ctx.textBaseline = a.base;
         ctx.fillStyle = withAlpha(fg, 1);
-        ctx.fillText(text, w / 2, h * (big ? 0.62 : 0.34));
+        ctx.fillText(text, a.x, a.y);
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
         break;
       }
       // ------------------------------------------------- date
       case 'date': {
         const d = new Date(Date.now() + frame * t.dt * 1000);
         const text = d.toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: 'short' });
+        const a = anchor(c.slot, w, h, 'bar');
         ctx.font = `${Math.floor(h * 0.115)}px ${UI}`;
+        ctx.textAlign = a.align;
+        ctx.textBaseline = a.base;
         ctx.fillStyle = withAlpha(fg, 0.95);
-        ctx.fillText(text, w / 2, h * 0.88);
+        ctx.fillText(text, a.x, a.y);
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
         break;
       }
       // ------------------------------------------------- ticker
@@ -336,18 +704,22 @@ export function renderTemplate(t: Template, w: number, h: number, frame: number)
         const txt = c.text ?? 'SharkDeck';
         const spd = c.speed ?? 1;
         const size = Math.floor(h * 0.15);
+        const a = anchor(c.slot, w, h, 'bar');
         ctx.font = `500 ${size}px ${UI}`;
         ctx.textAlign = 'left';
+        ctx.textBaseline = a.base;
         ctx.fillStyle = withAlpha(fg, 0.95);
         const tw = ctx.measureText(txt).width;
         const cycle = w + tw + 16;
-        let x = w - ((frame * spd * 2) % cycle);
+        const startX = a.align === 'right' ? w : a.align === 'center' ? w / 2 : 0;
+        let x = startX - ((frame * spd * 2) % cycle);
         for (let k = 0; x < w; k++) {
-          ctx.fillText(txt, x, h * 0.87);
+          ctx.fillText(txt, x, a.y);
           x = x + cycle;
           if (k > 4) break;
         }
         ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
         break;
       }
       // ------------------------------------------------- wave
@@ -510,8 +882,13 @@ export function renderTemplate(t: Template, w: number, h: number, frame: number)
         const R = Math.min(w, h) * 0.42;
         const bw = Math.max(15, Math.round(R * 0.44));
         const bh = Math.max(11, Math.round(R * 0.30));
-        const cx = w / 2 + R * 0.56;
-        const cy = h / 2;
+        const a = anchor(c.slot, w, h, 'tr');
+        const cx = c.slot
+          ? (a.align === 'right' ? a.x - bw / 2 : a.align === 'center' ? a.x : a.x + bw / 2)
+          : w / 2 + R * 0.56;
+        const cy = c.slot
+          ? (a.base === 'top' ? a.y + bh / 2 : a.base === 'bottom' ? a.y - bh / 2 : a.y)
+          : h / 2;
         ctx.fillStyle = withAlpha([0, 0, 0], 0.55);
         ctx.fillRect(cx - bw / 2, cy - bh / 2, bw, bh);
         ctx.strokeStyle = withAlpha(fg, 0.35);
@@ -526,8 +903,9 @@ export function renderTemplate(t: Template, w: number, h: number, frame: number)
       case 'battery': {
         const bw = Math.max(20, Math.floor(w * 0.14));
         const bh = Math.max(11, Math.floor(h * 0.12));
-        const x = 7;
-        const y = 7;
+        const a = anchor(c.slot, w, h, 'tl');
+        const x = a.align === 'right' ? a.x - bw : a.align === 'center' ? a.x - bw / 2 : a.x;
+        const y = a.base === 'bottom' ? a.y - bh : a.base === 'middle' ? a.y - bh / 2 : a.y;
         const pct = Math.max(0, Math.min(1, c.value ?? 0.82));
         drawBattery(ctx, x, y, bw, bh, pct, fg, c.batteryStyle ?? 'segments');
         ctx.font = `${Math.floor(h * 0.1)}px ${MONO}`;
@@ -541,8 +919,9 @@ export function renderTemplate(t: Template, w: number, h: number, frame: number)
       case 'ring': {
         const v = Math.max(0, Math.min(1, c.value ?? 0.6));
         const R = Math.min(w, h) * 0.20;
-        const cx = w - R - 9;
-        const cy = R + 9;
+        const a = anchor(c.slot, w, h, 'tr');
+        const cx = a.align === 'right' ? a.x - R : a.align === 'center' ? a.x : a.x + R;
+        const cy = a.base === 'bottom' ? a.y - R : a.base === 'middle' ? a.y : a.y + R;
         ctx.strokeStyle = withAlpha(fg, 0.22);
         ctx.lineWidth = 4;
         ctx.beginPath();
@@ -556,11 +935,14 @@ export function renderTemplate(t: Template, w: number, h: number, frame: number)
       }
       // ------------------------------------------------- step counter
       case 'steps': {
+        const a = anchor(c.slot, w, h, 'bl');
         ctx.font = `${Math.floor(h * 0.13)}px ${MONO}`;
-        ctx.textAlign = 'left';
+        ctx.textAlign = a.align;
+        ctx.textBaseline = a.base;
         ctx.fillStyle = withAlpha(fg, 0.9);
-        ctx.fillText(c.text ?? '8.4k', 8, h - 8);
+        ctx.fillText(c.text ?? '8.4k', a.x, a.y);
         ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
         break;
       }
       // ------------------------------------------------- host battery
@@ -569,8 +951,9 @@ export function renderTemplate(t: Template, w: number, h: number, frame: number)
         const pct = info?.battery ?? null;
         const bw = Math.max(20, Math.floor(w * 0.15));
         const bh = Math.max(11, Math.floor(h * 0.12));
-        const x = 7;
-        const y = 7;
+        const a = anchor(c.slot, w, h, 'tl');
+        const x = a.align === 'right' ? a.x - bw : a.align === 'center' ? a.x - bw / 2 : a.x;
+        const y = a.base === 'bottom' ? a.y - bh : a.base === 'middle' ? a.y - bh / 2 : a.y;
         if (pct !== null) {
           drawBattery(ctx, x, y, bw, bh, pct / 100, fg, c.batteryStyle ?? 'segments');
           ctx.font = `${Math.floor(h * 0.1)}px ${MONO}`;
@@ -597,8 +980,9 @@ export function renderTemplate(t: Template, w: number, h: number, frame: number)
         const pct = live.info?.cpu ?? 0;
         const bw = Math.max(26, Math.floor(w * 0.17));
         const bh = Math.max(7, Math.floor(h * 0.08));
-        const x = 7;
-        const y = 7;
+        const a = anchor(c.slot, w, h, 'tl');
+        const x = a.align === 'right' ? a.x - bw : a.align === 'center' ? a.x - bw / 2 : a.x;
+        const y = a.base === 'bottom' ? a.y - bh : a.base === 'middle' ? a.y - bh / 2 : a.y;
         ctx.fillStyle = withAlpha(fg, 0.18);
         ctx.fillRect(x, y, bw, bh);
         ctx.fillStyle = withAlpha(fg, 0.95);
@@ -615,8 +999,9 @@ export function renderTemplate(t: Template, w: number, h: number, frame: number)
         const pct = live.info?.ram ?? 0;
         const bw = Math.max(26, Math.floor(w * 0.17));
         const bh = Math.max(7, Math.floor(h * 0.08));
-        const x = 7;
-        const y = 7 + Math.floor(h * 0.2);
+        const a = anchor(c.slot, w, h, 'tl');
+        const x = a.align === 'right' ? a.x - bw : a.align === 'center' ? a.x - bw / 2 : a.x;
+        const y = a.base === 'bottom' ? a.y - bh : a.base === 'middle' ? a.y - bh / 2 : a.y;
         ctx.fillStyle = withAlpha(fg, 0.18);
         ctx.fillRect(x, y, bw, bh);
         ctx.fillStyle = withAlpha(fg, 0.95);
@@ -632,11 +1017,14 @@ export function renderTemplate(t: Template, w: number, h: number, frame: number)
       case 'devinfo': {
         const info = live.info;
         const label = info && info.firmware ? `K86 fw ${info.firmware} · P${info.profile + 1}` : 'K86';
+        const a = anchor(c.slot, w, h, 'bl');
         ctx.font = `${Math.floor(h * 0.1)}px ${MONO}`;
-        ctx.textAlign = 'left';
+        ctx.textAlign = a.align;
+        ctx.textBaseline = a.base;
         ctx.fillStyle = withAlpha(fg, 0.9);
-        ctx.fillText(label, 8, h - 8);
+        ctx.fillText(label, a.x, a.y);
         ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
         break;
       }
       // ------------------------------------------------- host uptime
@@ -644,11 +1032,14 @@ export function renderTemplate(t: Template, w: number, h: number, frame: number)
         const s = live.info?.uptime ?? 0;
         const hh = Math.floor(s / 3600);
         const mm = Math.floor((s % 3600) / 60);
+        const a = anchor(c.slot, w, h, 'bl');
         ctx.font = `${Math.floor(h * 0.1)}px ${MONO}`;
-        ctx.textAlign = 'left';
+        ctx.textAlign = a.align;
+        ctx.textBaseline = a.base;
         ctx.fillStyle = withAlpha(fg, 0.9);
-        ctx.fillText(`UP ${hh}h ${String(mm).padStart(2, '0')}m`, 8, h - 8);
+        ctx.fillText(`UP ${hh}h ${String(mm).padStart(2, '0')}m`, a.x, a.y);
         ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
         break;
       }
     }

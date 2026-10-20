@@ -7,6 +7,12 @@
     renderFrames,
     renderStill,
     templateIsAnimated,
+    activeLayout,
+    compsFromLayout,
+    SLOT_IDS,
+    SLOT_LABEL,
+    type LayoutDef,
+    type SlotId,
     type Template,
     type Comp,
     type CompKind,
@@ -31,6 +37,22 @@
   let wizH = $state(0);
 
   const anim = $derived(templateIsAnimated(tpl));
+  const layouts = $derived(tpl.layouts ?? []);
+  const lay = $derived(activeLayout(tpl));
+
+  /** Switch to another layout of this template: rebuild the component set. */
+  function useLayout(l: LayoutDef) {
+    tpl = { ...tpl, layout: l.id, comps: compsFromLayout(l) };
+    refresh();
+  }
+
+  function setSlot(i: number, slot: SlotId) {
+    upd(i, { slot });
+  }
+
+  const SLOT_SHORT: Record<SlotId, string> = {
+    tl: 'TL', tr: 'TR', c: 'C', bl: 'BL', br: 'BR', bar: 'BAR', l: 'L', r: 'R',
+  };
 
   onMount(async () => {
     cfg = await configGet().catch(() => null);
@@ -223,11 +245,34 @@
 
     <!-- composer -->
     <div class="col grow">
+      {#if layouts.length}
+        <div class="panel">
+          <h3>Layout</h3>
+          <div class="row" style="gap:6px; flex-wrap:wrap">
+            {#each layouts as l (l.id)}
+              <button class="chip" class:sel={l.id === tpl.layout} onclick={() => useLayout(l)}>{l.name}</button>
+            {/each}
+          </div>
+          {#if lay}
+            <div class="hint" style="margin-top:7px">
+              {lay.desc} · clock at {Math.round(lay.clock.size * 100)}% in {SLOT_LABEL[lay.clock.slot]}
+            </div>
+          {/if}
+          <div class="hint" style="margin-top:4px">
+            Pick a layout, then move any widget onto one of the eight anchor positions below.
+          </div>
+        </div>
+      {/if}
       <div class="panel">
         <h3>Components</h3>
         {#each tpl.comps as c, i (i)}
           <div class="comp-row">
-            <span class="comp-kind">{KIND_LABEL[c.kind]}</span>
+            <span class="comp-kind">{labelOf(c.kind)}</span>
+            <span class="chiprow" title="anchor position">
+              {#each SLOT_IDS as s (s)}
+                <button class="chip tiny" class:sel={(c.slot ?? 'tl') === s} onclick={() => setSlot(i, s)}>{SLOT_SHORT[s]}</button>
+              {/each}
+            </span>
             {#if c.kind === 'ticker' || c.kind === 'meter'}
               <input class="t" type="text" value={c.text ?? ''} oninput={(e) => upd(i, { text: e.currentTarget.value })} placeholder="text" />
             {/if}
@@ -415,6 +460,12 @@
   .chiprow {
     display: inline-flex;
     gap: 4px;
+  }
+  .chip.tiny {
+    padding: 2px 5px;
+    font-size: 9.5px;
+    letter-spacing: 0.04em;
+    min-width: 20px;
   }
   .geom { margin-top: 8px; }
   .slot-sel {

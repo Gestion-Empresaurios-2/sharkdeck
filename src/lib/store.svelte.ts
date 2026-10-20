@@ -4,6 +4,39 @@ import type { DeviceInfo } from './types';
 
 type Toast = { id: number; kind: 'ok' | 'err' | 'info'; text: string };
 export type Theme = 'light' | 'dark';
+export type AccentKey = 'mint' | 'solar' | 'violet' | 'ice';
+
+export const ACCENTS: { key: AccentKey; name: string; color: string; ink: string }[] = [
+  { key: 'mint', name: 'Mint', color: '#cefa83', ink: '#16210f' },
+  { key: 'solar', name: 'Solar', color: '#ffdf8f', ink: '#362619' },
+  { key: 'violet', name: 'Violet', color: '#cfbaff', ink: '#281b41' },
+  { key: 'ice', name: 'Ice', color: '#a6dcff', ink: '#0e2e45' },
+];
+
+function initAccent(): AccentKey {
+  try {
+    const a = localStorage.getItem('sd-accent');
+    if (a && ACCENTS.some((x) => x.key === a)) return a as AccentKey;
+  } catch {
+    /* storage unavailable */
+  }
+  return 'mint';
+}
+
+export function applyAccent(key: AccentKey) {
+  const a = ACCENTS.find((x) => x.key === key) ?? ACCENTS[0];
+  store.accent = a.key;
+  const root = document.documentElement;
+  root.style.setProperty('--accent', a.color);
+  root.style.setProperty('--accent-ink', a.ink);
+  root.style.setProperty('--accent-soft', `color-mix(in srgb, ${a.color} 16%, transparent)`);
+  root.style.setProperty('--accent-line', `color-mix(in srgb, ${a.color} 42%, transparent)`);
+  try {
+    localStorage.setItem('sd-accent', a.key);
+  } catch {
+    /* storage unavailable */
+  }
+}
 
 function initTheme(): Theme {
   try {
@@ -22,6 +55,7 @@ export const store = $state({
   busy: false as boolean,
   toasts: [] as Toast[],
   theme: initTheme() as Theme,
+  accent: initAccent() as AccentKey,
   // Exposed on the store as well as as named exports: pages call both
   // `store.toast(...)` and `toast(...)`.
   toast,
@@ -30,6 +64,7 @@ export const store = $state({
   probeDevice,
   applyTheme,
   toggleTheme,
+  applyAccent,
 });
 
 export function applyTheme(t: Theme) {

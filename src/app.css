@@ -366,3 +366,62 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
 }
+
+
+/* ---- native window bar + accent picker (FRAME OS) ---- */
+.win-controls { display: flex; align-items: center; gap: 2px; margin-left: 6px; }
+.win-controls button {
+  width: 30px; height: 26px; display: grid; place-items: center;
+  border: none; border-radius: 7px; background: transparent; color: var(--muted);
+  cursor: pointer; transition: background .16s ease, color .16s ease;
+}
+.win-controls button:hover { background: var(--panel-2); color: var(--text); }
+.win-controls button.close:hover { background: #d71c2d; color: #fff; }
+
+.accent-swatches { display: flex; align-items: center; gap: 5px; }
+.accent-dot {
+  width: 15px; height: 15px; border-radius: 50%; padding: 0; cursor: pointer;
+  background: var(--sw); border: 1px solid rgba(255,255,255,.18);
+  transition: transform .16s cubic-bezier(.32,.72,0,1), box-shadow .16s ease;
+}
+.accent-dot:hover { transform: scale(1.12); }
+.accent-dot.sel { box-shadow: 0 0 0 2px var(--bg), 0 0 0 3.5px var(--sw); }
+
+.resize-grip {
+  position: fixed; right: 2px; bottom: 2px; width: 16px; height: 16px;
+  cursor: nwse-resize; z-index: 40; opacity: .35;
+  background: linear-gradient(135deg, transparent 48%, var(--muted) 48%, var(--muted) 56%, transparent 56%, transparent 68%, var(--muted) 68%, var(--muted) 76%, transparent 76%);
+}
+
+/* Device status cluster — a quiet LED + mono label, not a pill. */
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: transparent;
+  border: 0;
+  padding: 6px 4px;
+  cursor: pointer;
+  color: var(--faint);
+  font: 500 10px/1 var(--mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  transition: color 0.18s ease;
+}
+.status:hover { color: var(--soft); }
+.status-led {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--faint);
+  flex-shrink: 0;
+  transition: background 0.25s ease, box-shadow 0.25s ease;
+}
+.status.on { color: var(--soft); }
+.status.on .status-led {
+  background: var(--accent);
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent),
+    0 0 9px color-mix(in srgb, var(--accent) 55%, transparent);
+}
+.status-label { white-space: nowrap; }

@@ -9,7 +9,7 @@ export const live: { info: HostInfo | null } = { info: null };
 let timer: ReturnType<typeof setInterval> | null = null;
 
 /** Poll host + keyboard telemetry so on-panel widgets have real numbers. */
-export function startLive(intervalMs = 2000): void {
+export function startLive(intervalMs = 700): void {
   if (timer !== null) return;
   const tick = async () => {
     try {

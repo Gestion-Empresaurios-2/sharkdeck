@@ -62,7 +62,7 @@
     if (connected()) syncLogs();
     const t = setInterval(syncLogs, 2500);
     refreshHost();
-    const h = setInterval(refreshHost, 5000);
+    const h = setInterval(refreshHost, 2000);
     return () => {
       clearInterval(t);
       clearInterval(h);

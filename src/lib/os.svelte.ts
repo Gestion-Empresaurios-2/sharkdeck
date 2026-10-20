@@ -96,19 +96,84 @@ export const osState = $state({
   musicPlaying: true,
   track: 0,
   progress: 34,
+  musicStart: 0,
   focusSeconds: 25 * 60,
-  focusRunning: false,
+  focusRunning: true,
+  focusStart: 0,
   metrics: { cpu: 24, gpu: 38, ram: 63, temp: 49 },
   history: [24, 29, 22, 27, 33, 25, 20, 32, 26, 35, 25, 29, 24],
   toast: '',
 });
 
+// ---------------------------------------------------------------------------
+// Live time model
+//
+// Every number on every screen is a pure function of time. `osTime.base` is the
+// wall-clock anchor and `osTime.t` the seconds elapsed from it; the renderer
+// always reads through this, so a frame pushed to the keyboard shows exactly
+// what the on-screen preview shows, evolving at the same pace.
+// ---------------------------------------------------------------------------
+
+export const osTime = { base: Date.now(), t: 0 };
+
+/** Smooth, deterministic oscillation — no random jitter, so frames are stable. */
+function wave(t: number, a: number, b: number, ph = 0): number {
+  return 0.62 * Math.sin(t / a + ph) + 0.38 * Math.sin(t / b + ph * 1.7);
+}
+
+function clamp(v: number, lo: number, hi: number): number {
+  return Math.max(lo, Math.min(hi, v));
+}
+
+/** A live metric reading: the smoothed base (real host data when we have it)
+ *  plus a continuous time-based oscillation, so the value never freezes. */
+export function metricNow(kind: 'cpu' | 'gpu' | 'ram' | 'temp', t = osTime.t): number {
+  const m = osState.metrics;
+  switch (kind) {
+    case 'cpu':
+      return Math.round(clamp(m.cpu + 6.5 * wave(t, 7.3, 3.1, 0.4), 3, 99));
+    case 'gpu':
+      return Math.round(clamp(m.gpu + 9 * wave(t, 11.7, 4.9, 1.1), 4, 99));
+    case 'ram':
+      return Math.round(clamp(m.ram + 2.4 * wave(t, 23.3, 9.7, 2.2), 20, 99));
+    case 'temp':
+      return Math.round(clamp(m.temp + 1.7 * wave(t, 31.1, 13.3, 0.8), 30, 95));
+  }
+}
+
+/** Scrolling history for the sparklines — recomputed from the same model, so
+ *  the line slides continuously instead of stepping once per tick. */
+export function historyNow(t = osTime.t, n = 22): number[] {
+  const out: number[] = [];
+  for (let i = 0; i < n; i++) out.push(metricNow('cpu', t - (n - 1 - i) * 1.4));
+  return out;
+}
+
+/** Focus countdown, in seconds left. */
+export function focusNow(t = osTime.t): number {
+  if (!osState.focusRunning) return osState.focusSeconds;
+  return Math.max(0, osState.focusSeconds - (t - osState.focusStart));
+}
+
+/** Weather: a slow, continuous drift around the day's baseline. */
+export function weatherNow(t = osTime.t): { temp: number; city: string } {
+  return { temp: Math.round(19 + 2.4 * wave(t, 420, 160, 0.5)), city: osState.settings.city };
+}
+
+/** Music progress, 0..100. */
+export function progressNow(t = osTime.t): number {
+  if (!osState.musicPlaying) return osState.progress;
+  return (osState.progress + (t - osState.musicStart) * 0.6) % 100;
+}
+
 export function resetOs() {
   osState.settings = { ...OS_DEFAULTS, macros: [...OS_DEFAULTS.macros] };
   osState.page = 'lock';
   osState.power = true;
-  osState.focusRunning = false;
+  osState.focusRunning = true;
   osState.focusSeconds = 25 * 60;
+  osState.focusStart = osTime.t;
+  osState.musicStart = osTime.t;
 }
 
 export function osAccent(): { color: string; ink: string } {
@@ -241,8 +306,7 @@ function pad(n: number) {
 export const osClock = $state({ offsetSec: 0 });
 
 function timeParts() {
-  const d = new Date();
-  const d2 = new Date(d.getTime() + osClock.offsetSec * 1000);
+  const d2 = new Date(osTime.base + osTime.t * 1000);
   const h24 = d2.getHours();
   const h = osState.settings.format24 ? h24 : h24 % 12 || 12;
   return {
@@ -255,24 +319,30 @@ function timeParts() {
   };
 }
 
-export const osHost = $state({ battery: null as number | null, charging: false });
+export const osHost = $state({
+  battery: null as number | null,
+  charging: false,
+  cpu: null as number | null,
+  ram: null as number | null,
+});
 
 export function widgetData(key: WidgetKey): { label: string; value: string } {
   const t = timeParts();
   switch (key) {
     case 'cpu':
-      return { label: 'CPU LOAD', value: `${osState.metrics.cpu}%` };
+      return { label: 'CPU LOAD', value: `${metricNow('cpu')}%` };
     case 'battery':
       return {
         label: osHost.battery == null ? 'BATTERY' : osHost.charging ? 'BATTERY · CHG' : 'BATTERY',
         value: osHost.battery == null ? '—' : `${osHost.battery}%`,
       };
     case 'weather':
-      return { label: 'WEATHER', value: '19°' };
+      return { label: 'WEATHER', value: `${weatherNow().temp}°` };
     case 'focus':
-      return { label: 'FOCUS', value: `${pad(Math.floor(osState.focusSeconds / 60))}:${pad(osState.focusSeconds % 60)}` };
+      const left = focusNow();
+      return { label: 'FOCUS', value: `${pad(Math.floor(left / 60))}:${pad(left % 60)}` };
     case 'memory':
-      return { label: 'MEMORY', value: `${osState.metrics.ram}%` };
+      return { label: 'MEMORY', value: `${metricNow('ram')}%` };
     case 'date':
       return { label: 'TODAY', value: t.short.toUpperCase() };
   }
@@ -364,15 +434,19 @@ function dashPage(ctx: CanvasRenderingContext2D, w: number, h: number) {
   // stat tile
   glass(ctx, 9, 33, 96, 52);
   text(ctx, 'CPU ACTIVITY', 16, 44, 6, 'rgba(255,255,255,0.6)', { weight: 700 });
-  text(ctx, String(osState.metrics.cpu), 16, 66, 20, metricColor(osState.metrics.cpu, 'load'), { weight: 760 });
+  const cpuNow = metricNow('cpu');
+  text(ctx, String(cpuNow), 16, 66, 20, metricColor(cpuNow, 'load'), { weight: 760 });
   text(ctx, '%', 38, 66, 9, 'rgba(255,255,255,0.6)', { weight: 600 });
   // sparkline
   ctx.strokeStyle = a.color;
   ctx.lineWidth = 1.4;
   ctx.beginPath();
-  osState.history.forEach((v, i) => {
-    const x = 50 + (i / (osState.history.length - 1)) * 50;
-    const y = 79 - (v / 100) * 34;
+  const dashHist = historyNow();
+  const dLo = Math.min(...dashHist);
+  const dSpan = Math.max(6, Math.max(...dashHist) - dLo);
+  dashHist.forEach((v, i) => {
+    const x = 50 + (i / (dashHist.length - 1)) * 50;
+    const y = 79 - ((v - dLo) / dSpan) * 30;
     i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
   });
   ctx.stroke();
@@ -392,10 +466,10 @@ function dashPage(ctx: CanvasRenderingContext2D, w: number, h: number) {
   // two mini tiles
   glass(ctx, 111, 67, 58, 18);
   text(ctx, 'WEATHER', 117, 78, 6, 'rgba(255,255,255,0.6)', { weight: 700 });
-  text(ctx, '19°', 163, 79, 12, '#ffffff', { weight: 780, align: 'right' });
+  text(ctx, `${weatherNow().temp}°`, 163, 79, 12, '#ffffff', { weight: 780, align: 'right' });
   glass(ctx, 173, 67, 58, 18);
   text(ctx, 'FOCUS', 179, 78, 6, 'rgba(255,255,255,0.6)', { weight: 700 });
-  text(ctx, `${Math.floor(osState.focusSeconds / 60)}m`, 225, 79, 12, '#ffffff', { weight: 780, align: 'right' });
+  text(ctx, `${Math.floor(focusNow() / 60)}m`, 225, 79, 12, '#ffffff', { weight: 780, align: 'right' });
 }
 
 function musicPage(ctx: CanvasRenderingContext2D, w: number, h: number) {
@@ -469,7 +543,7 @@ function musicPage(ctx: CanvasRenderingContext2D, w: number, h: number) {
   rr(ctx, 111, 113, 118, 3, 1.5);
   ctx.fill();
   ctx.fillStyle = a.color;
-  rr(ctx, 111, 113, 118 * (osState.progress / 100), 3, 1.5);
+  rr(ctx, 111, 113, 118 * (progressNow() / 100), 3, 1.5);
   ctx.fill();
   text(ctx, '0:52', 111, 126, 6, 'rgba(255,255,255,0.6)', { weight: 600, font: MONO });
   text(ctx, '3:52', 229, 126, 6, 'rgba(255,255,255,0.6)', { weight: 600, font: MONO, align: 'right' });
@@ -492,9 +566,9 @@ function perfPage(ctx: CanvasRenderingContext2D, w: number, h: number) {
   text(ctx, 'LIVE', w - 9, 26, 6, 'rgba(255,255,255,0.5)', { weight: 700, align: 'right', font: MONO });
 
   const cards: [string, number, string][] = [
-    ['CPU LOAD', osState.metrics.cpu, '%'],
-    ['GPU LOAD', osState.metrics.gpu, '%'],
-    ['MEMORY', osState.metrics.ram, '%'],
+    ['CPU LOAD', metricNow('cpu'), '%'],
+    ['GPU LOAD', metricNow('gpu'), '%'],
+    ['MEMORY', metricNow('ram'), '%'],
   ];
   cards.forEach(([label, value, unit], i) => {
     const x = 9 + i * 75;
@@ -508,13 +582,17 @@ function perfPage(ctx: CanvasRenderingContext2D, w: number, h: number) {
   });
 
   text(ctx, 'UTILIZATION · LAST 30 S', 10, 88, 6, 'rgba(255,255,255,0.5)', { weight: 700, font: MONO });
-  text(ctx, `${osState.metrics.temp}°C`, w - 10, 88, 6, metricColor(osState.metrics.temp, 'temp'), { weight: 700, font: MONO, align: 'right' });
-  ctx.strokeStyle = metricColor(osState.metrics.cpu, 'load');
+  const tempNow = metricNow('temp');
+  const perfHist = historyNow();
+  text(ctx, `${tempNow}°C`, w - 10, 88, 6, metricColor(tempNow, 'temp'), { weight: 700, font: MONO, align: 'right' });
+  ctx.strokeStyle = metricColor(metricNow('cpu'), 'load');
   ctx.lineWidth = 1.5;
   ctx.beginPath();
-  osState.history.forEach((v, i) => {
-    const x = 10 + (i / (osState.history.length - 1)) * (w - 20);
-    const y = 126 - (v / 100) * 30;
+  const hLo = Math.min(...perfHist);
+  const hSpan = Math.max(6, Math.max(...perfHist) - hLo);
+  perfHist.forEach((v, i) => {
+    const x = 10 + (i / (perfHist.length - 1)) * (w - 20);
+    const y = 126 - ((v - hLo) / hSpan) * 26;
     i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
   });
   ctx.stroke();
@@ -536,7 +614,8 @@ function focusPage(ctx: CanvasRenderingContext2D, w: number, h: number) {
   ctx.fillRect(0, 0, w, h);
   statusBar(ctx, w, 'FRAME / FOCUS');
   text(ctx, 'DEEP WORK SESSION', 12, 40, 7, 'rgba(190,220,200,0.85)', { weight: 730 });
-  text(ctx, `${pad(Math.floor(osState.focusSeconds / 60))}:${pad(osState.focusSeconds % 60)}`, 11, 76, 35, '#ffffff', { weight: 770 });
+  const focusLeft = focusNow();
+  text(ctx, `${pad(Math.floor(focusLeft / 60))}:${pad(focusLeft % 60)}`, 11, 76, 35, '#ffffff', { weight: 770 });
   text(ctx, osState.focusRunning ? 'Stay in your flow.' : 'Ready when you are.', 13, 90, 7, 'rgba(170,200,180,0.8)', { weight: 500 });
 
   // start/pause pill
@@ -554,7 +633,7 @@ function focusPage(ctx: CanvasRenderingContext2D, w: number, h: number) {
   ctx.beginPath();
   ctx.arc(cx, cy, r, 0, Math.PI * 2);
   ctx.stroke();
-  const frac = 1 - osState.focusSeconds / (25 * 60);
+  const frac = 1 - focusLeft / (25 * 60);
   ctx.strokeStyle = a.color;
   ctx.lineWidth = 4;
   ctx.lineCap = 'round';
@@ -599,7 +678,7 @@ function weatherPage(ctx: CanvasRenderingContext2D, w: number, h: number) {
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, w, h);
   statusBar(ctx, w, 'FRAME / WEATHER');
-  text(ctx, '19°', 12, 68, 40, '#ffffff', { weight: 760 });
+  text(ctx, `${weatherNow().temp}°`, 12, 68, 40, '#ffffff', { weight: 760 });
   text(ctx, osState.settings.city || 'Your city', 13, 84, 8, 'rgba(255,255,255,0.9)', { weight: 650 });
   text(ctx, 'Mostly sunny · Feels like 21°', 13, 95, 7, 'rgba(225,246,255,0.75)', { weight: 500 });
 
@@ -617,7 +696,7 @@ function weatherPage(ctx: CanvasRenderingContext2D, w: number, h: number) {
 
   glass(ctx, 10, 104, w - 20, 23);
   const fc: [string, string][] = [
-    ['NOW', '19°'],
+    ['NOW', `${weatherNow().temp}°`],
     ['12 PM', '22°'],
     ['3 PM', '24°'],
     ['6 PM', '18°'],
@@ -725,7 +804,8 @@ function settingsPage(ctx: CanvasRenderingContext2D, w: number, h: number) {
 // Public render
 // ---------------------------------------------------------------------------
 
-export function renderOsPage(page: OsPage, w: number, h: number): Uint8ClampedArray {
+export function renderOsPage(page: OsPage, w: number, h: number, tSec?: number): Uint8ClampedArray {
+  osTime.t = tSec ?? (Date.now() - osTime.base) / 1000;
   const canvas = document.createElement('canvas');
   canvas.width = w;
   canvas.height = h;
@@ -775,13 +855,29 @@ export function renderOsPage(page: OsPage, w: number, h: number): Uint8ClampedAr
 
 export function osFrames(page: OsPage, w: number, h: number, count: number, delayCentis = 100) {
   const out: { rgba_b64: string; delay: number }[] = [];
-  const base = osClock.offsetSec;
+  const t0 = osTime.t;
+  const step = Math.max(0.01, delayCentis / 100);
   for (let i = 0; i < count; i++) {
-    osClock.offsetSec = base + i;
-    const data = renderOsPage(page, w, h);
+    osTime.t = t0 + i * step;
+    const data = renderOsPage(page, w, h, osTime.t);
     out.push({ rgba_b64: b64(data), delay: delayCentis });
   }
-  osClock.offsetSec = base;
+  osTime.t = t0;
+  return out;
+}
+
+/** Carousel frames: the given screens in order, each one a moment later than
+ *  the last, so the clock, counters and sparklines keep moving as the
+ *  keyboard rotates through them. */
+export function osCarouselFrames(pages: OsPage[], w: number, h: number, dwellCentis = 100) {
+  const out: { rgba_b64: string; delay: number }[] = [];
+  const t0 = osTime.t;
+  const step = Math.max(0.01, dwellCentis / 100);
+  pages.forEach((p, i) => {
+    osTime.t = t0 + i * step;
+    out.push({ rgba_b64: b64(renderOsPage(p, w, h, osTime.t)), delay: dwellCentis });
+  });
+  osTime.t = t0;
   return out;
 }
 
@@ -794,20 +890,21 @@ export function b64(data: Uint8ClampedArray): string {
   return btoa(s);
 }
 
-/** Tick the simulated OS state (metrics drift, focus timer, music progress). */
-export function tickOs() {
-  if (osState.focusRunning && osState.focusSeconds > 0) {
-    osState.focusSeconds--;
-    if (osState.focusSeconds === 0) osState.focusRunning = false;
-  }
-  if (osState.musicPlaying) {
-    osState.progress = (osState.progress + 0.6) % 100;
-  }
+/**
+ * Update the simulation: the metric bases ease towards the real numbers the
+ * host reports (CPU / RAM), and GPU + temperature follow the CPU. The visible
+ * value is then `metricNow()` = base + a smooth time-based oscillation, so the
+ * numbers move continuously instead of jumping once per second.
+ */
+export function tickOs(dt = 1) {
   const m = osState.metrics;
-  m.cpu = Math.round(Math.max(8, Math.min(88, m.cpu + (Math.random() - 0.5) * 14)));
-  m.gpu = Math.round(Math.max(10, Math.min(92, m.gpu + (Math.random() - 0.5) * 10)));
-  m.ram = Math.round(Math.max(52, Math.min(78, m.ram + (Math.random() - 0.5) * 3)));
-  m.temp = Math.round(Math.max(39, Math.min(77, m.temp + (Math.random() - 0.5) * 3)));
-  osState.history.push(m.cpu);
-  if (osState.history.length > 22) osState.history.shift();
+  const k = 1 - Math.exp(-dt / 1.2);
+  if (osHost.cpu != null) m.cpu += (osHost.cpu - m.cpu) * k;
+  if (osHost.ram != null) m.ram += (osHost.ram - m.ram) * k;
+  m.gpu += (clamp(m.cpu * 1.15, 10, 92) - m.gpu) * k * 0.6;
+  m.temp += (clamp(38 + m.cpu * 0.28, 39, 77) - m.temp) * k * 0.5;
+  m.cpu = clamp(m.cpu, 3, 99);
+  m.gpu = clamp(m.gpu, 4, 99);
+  m.ram = clamp(m.ram, 20, 99);
+  m.temp = clamp(m.temp, 30, 95);
 }

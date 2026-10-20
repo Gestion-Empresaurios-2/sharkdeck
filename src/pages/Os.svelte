@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
   import {
     osState,
     OS_PAGES,
@@ -8,6 +8,7 @@
     WIDGETS,
     renderOsPage,
     osFrames,
+    osCarouselFrames,
     b64,
     tickOs,
     osHost,
@@ -39,10 +40,14 @@
   onMount(async () => {
     cfg = await api.configGet().catch(() => null);
     startLive();
+    let last = performance.now();
     const t = setInterval(() => {
-      tickOs();
+      const now = performance.now();
+      const dt = Math.min(0.5, (now - last) / 1000);
+      last = now;
+      tickOs(dt);
       paint();
-    }, 1000);
+    }, 66);
     window.addEventListener('keydown', onKey);
     return () => {
       clearInterval(t);
@@ -62,14 +67,16 @@
   }
 
   $effect(() => {
-    // re-render whenever the OS state or panel size changes
+    // re-render whenever the OS state or panel size changes.
+    // untrack: the paint itself reads live metrics, which must not become
+    // dependencies of this effect (it would loop on every simulation tick).
     osState.page;
     osState.settings.accent;
     osState.settings.wall;
     osState.settings.layout;
     W;
     H;
-    paint();
+    untrack(paint);
   });
 
   $effect(() => {
@@ -77,8 +84,8 @@
     if (info) {
       osHost.battery = info.battery;
       osHost.charging = info.charging;
-      if (typeof info.cpu === 'number') osState.metrics.cpu = Math.round(info.cpu);
-      if (typeof info.ram === 'number') osState.metrics.ram = Math.round(info.ram);
+      if (typeof info.cpu === 'number') osHost.cpu = info.cpu;
+      if (typeof info.ram === 'number') osHost.ram = info.ram;
     }
   });
 
@@ -113,8 +120,66 @@
     } else if (e.key === 'ArrowRight') {
       e.preventDefault();
       cycle(1);
+    } else if (/^[1-9]$/.test(e.key)) {
+      const pg = OS_PAGES[Number(e.key) - 1];
+      if (pg) osState.page = pg.id as OsPage;
     }
   }
+
+
+  /* ---- fast switching between the 9 screens ---- */
+
+  /* Carousel: ONE push whose frames are the 9 screens; the keyboard then
+     rotates them on its own — no further pushes needed. */
+  let dwell = $state(100);
+  async function pushCarousel() {
+    if (!store.device) return toast('err', 'No device connected');
+    busy = true;
+    try {
+      const frames = osCarouselFrames(
+        OS_PAGES.map((pg) => pg.id as OsPage),
+        W,
+        H,
+        Math.max(1, Math.min(255, Math.round(dwell))),
+      );
+      await api.screenAnimPush(frames, W, H, cfg?.order);
+      toast('ok', `Carousel pushed — ${frames.length} screens now rotate on the keyboard`);
+    } catch (e) {
+      toast('err', errText(e));
+    } finally {
+      busy = false;
+    }
+  }
+
+  /* Favourites -> the 5 on-device image slots, so the keyboard's own knob
+     menu switches between them instantly. */
+  let slotPages = $state<string[]>(['lock', 'dash', 'music', 'perf', 'focus']);
+  async function pushSlots() {
+    if (!store.device) return toast('err', 'No device connected');
+    busy = true;
+    try {
+      for (let i = 0; i < 5; i++) {
+        const page = slotPages[i] as OsPage;
+        await api.screenPush(b64(renderOsPage(page, W, H)), W, H, 'Stretch', cfg?.order, 10, i);
+      }
+      toast('ok', '5 screens pushed to the image slots — switch instantly from the keyboard');
+    } catch (e) {
+      toast('err', errText(e));
+    } finally {
+      busy = false;
+    }
+  }
+
+  /* Keep the keyboard live: re-anchor the pushed animation before the
+     30 frames run out, so the clock and the counters never rewind. */
+  let keepLive = $state(false);
+  $effect(() => {
+    if (!keepLive) return;
+    const id = setInterval(() => {
+      if (store.device && !busy) void pushAnimation(true);
+    }, 25000);
+    return () => clearInterval(id);
+  });
 
   async function push(silent = false) {
     if (!store.device) return toast('err', 'No device connected');
@@ -132,15 +197,15 @@
     }
   }
 
-  async function pushAnimation() {
+  async function pushAnimation(silent = false) {
     if (!store.device) return toast('err', 'No device connected');
     busy = true;
     try {
-      const frames = osFrames(osState.page, W, H, 15);
+      const frames = osFrames(osState.page, W, H, 30);
       await api.screenAnimPush(frames, W, H, cfg?.order);
-      toast('ok', 'Animated OS page pushed (15 frames)');
+      if (!silent) toast('ok', 'Animated OS page pushed (30 live frames)');
     } catch (e) {
-      toast('err', errText(e));
+      if (!silent) toast('err', errText(e));
     } finally {
       busy = false;
     }
@@ -158,6 +223,35 @@
         <span class="rail-hint">{p.hint}</span>
       </button>
     {/each}
+
+    <div class="rail-head">Quick switch</div>
+    <div class="quick-grid">
+      {#each OS_PAGES as pg, i (pg.id)}
+        <button
+          class="quick-btn"
+          class:sel={pg.id === osState.page}
+          title={pg.label}
+          onclick={() => (osState.page = pg.id as OsPage)}
+        >{i + 1}</button>
+      {/each}
+    </div>
+
+    <div class="rail-head">Image slots</div>
+    <div class="slot-picks">
+      {#each slotPages as sp, i}
+        <label class="slot-pick">
+          <span>Slot {i + 1}</span>
+          <select bind:value={slotPages[i]}>
+            {#each OS_PAGES as pg (pg.id)}
+              <option value={pg.id}>{pg.label}</option>
+            {/each}
+          </select>
+        </label>
+      {/each}
+      <button class="btn sm" disabled={busy || !store.device} onclick={() => void pushSlots()}>
+        Push 5 to slots
+      </button>
+    </div>
   </nav>
 
   <!-- centre: the device -->
@@ -183,7 +277,19 @@
           <input type="checkbox" bind:checked={pushOnCycle} />
           push each
         </label>
+        <label class="chk push-cycle" title="Re-push the animation every 25 s so the clock and counters never rewind">
+          <input type="checkbox" bind:checked={keepLive} />
+          keep live
+        </label>
         <button class="btn sm" onclick={resetOs}>Reset</button>
+        <label class="chk push-cycle" title="Dwell per screen in the carousel">
+          dwell
+          <input class="num" type="number" min="10" max="255" bind:value={dwell} />
+          cs
+        </label>
+        <button class="btn sm" disabled={busy || !store.device} onclick={() => void pushCarousel()}>
+          Push carousel
+        </button>
         <button class="btn primary" disabled={busy || !store.device} onclick={() => void push()}>
           {#if busy}<span class="spinner"></span>{/if}
           Push to keyboard
@@ -687,4 +793,15 @@
   .push-cycle input {
     accent-color: var(--accent);
   }
+
+  .quick-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin: 0 0 14px; }
+  .quick-btn {
+    height: 26px; border-radius: 7px; border: 1px solid var(--line); background: var(--panel-2);
+    color: var(--muted); font: 600 11px/1 var(--mono); cursor: pointer; transition: all .16s ease;
+  }
+  .quick-btn:hover { color: var(--text); border-color: var(--accent-line); }
+  .quick-btn.sel { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); }
+  .slot-picks { display: grid; gap: 6px; margin-bottom: 14px; }
+  .slot-pick { display: grid; grid-template-columns: 44px 1fr; align-items: center; gap: 6px; font-size: 10px; color: var(--muted); }
+  .slot-pick select { width: 100%; height: 24px; font-size: 11px; padding: 0 6px; }
 </style>

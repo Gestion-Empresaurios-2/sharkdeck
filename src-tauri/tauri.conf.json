@@ -30,6 +30,7 @@
     "targets": ["appimage", "deb"],
     "category": "Utility",
     "shortDescription": "Screen, knob, lighting and keymap control for the Attack Shark K86",
+    "createUpdaterArtifacts": true,
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -37,5 +38,14 @@
       "icons/icon.png",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "active": true,
+      "pubkey": "REPLACE_WITH_YOUR_UPDATER_PUBLIC_KEY",
+      "endpoints": [
+        "https://github.com/Gestion-Empresaurios-2/sharkdeck/releases/latest/download/latest.json"
+      ]
+    }
   }
 }

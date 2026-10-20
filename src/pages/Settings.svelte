@@ -21,9 +21,44 @@
   let copied = $state(false);
   let host = $state<api.HostInfo | null>(null);
   let kbBattery = $state<number | null>(null);
+  let appVer = $state('');
+  let updateInfo = $state<api.UpdateInfo | null>(null);
+  let updBusy = $state(false);
+  let dlPct = $state(-1);
+
+  async function doCheckUpdate() {
+    updBusy = true;
+    try {
+      appVer = await api.appVersion();
+      updateInfo = await api.checkForUpdate();
+      toast(
+        updateInfo ? 'ok' : 'info',
+        updateInfo ? `Update ${updateInfo.version} available` : 'You are on the latest version',
+      );
+    } catch (e) {
+      toast('err', errText(e));
+    } finally {
+      updBusy = false;
+    }
+  }
+
+  async function doInstallUpdate() {
+    updBusy = true;
+    dlPct = 0;
+    try {
+      await api.installUpdate((p) => (dlPct = p));
+      toast('ok', 'Update installed — restarting SharkDeck');
+      await api.restartApp();
+    } catch (e) {
+      toast('err', errText(e));
+      updBusy = false;
+      dlPct = -1;
+    }
+  }
 
   onMount(() => {
     syncOpts();
+    api.appVersion().then((v) => (appVer = v)).catch(() => {});
     if (connected()) syncLogs();
     const t = setInterval(syncLogs, 2500);
     refreshHost();
@@ -147,6 +182,34 @@
           </button>
           <button class="btn" onclick={disconnect} disabled={!connected()}>Disconnect</button>
         </div>
+      </div>
+
+      <div class="panel">
+        <h3>Updates</h3>
+        <div class="kv"><span class="k">Installed version</span><span class="v">{appVer || '—'}</span></div>
+        {#if updateInfo}
+          <div class="kv"><span class="k">Available</span><span class="v">{updateInfo.version}</span></div>
+          {#if updateInfo.date}
+            <div class="kv"><span class="k">Released</span><span class="v">{updateInfo.date}</span></div>
+          {/if}
+          {#if updateInfo.notes}
+            <pre class="notes">{updateInfo.notes}</pre>
+          {/if}
+        {/if}
+        <div class="row" style="margin-top:12px">
+          <button class="btn" onclick={doCheckUpdate} disabled={updBusy}>
+            {#if updBusy}<span class="spinner"></span>{/if} Check for updates
+          </button>
+          {#if updateInfo}
+            <button class="btn primary" onclick={doInstallUpdate} disabled={updBusy}>
+              {dlPct >= 0 ? `Downloading ${Math.round(dlPct * 100)}%` : 'Install & restart'}
+            </button>
+          {/if}
+        </div>
+        <p class="hint" style="margin-top:8px">
+          Updates are signed and served from the project's GitHub release feed. A release feed and signing
+          key must be published before an update can appear here.
+        </p>
       </div>
 
       <div class="panel">
@@ -295,6 +358,19 @@
     padding: 9px 0;
     border-bottom: 1px solid rgba(255, 255, 255, 0.05);
     font-size: 13px;
+  }
+  .notes {
+    margin: 8px 0 0;
+    padding: 8px 10px;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-family: 'Ubuntu Mono', 'DejaVu Sans Mono', monospace;
+    font-size: 11.5px;
+    color: var(--dim);
+    white-space: pre-wrap;
+    max-height: 120px;
+    overflow: auto;
   }
   .opt:last-of-type {
     border-bottom: none;

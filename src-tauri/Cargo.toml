@@ -18,6 +18,8 @@ serde_json = "1"
 rfd = "0.15"
 base64 = "0.22"
 sharkdeck-core = { path = "../core" }
+tauri-plugin-updater = "2.14.0"
+tauri-plugin-process = "2.4.0"
 
 [features]
 default = []

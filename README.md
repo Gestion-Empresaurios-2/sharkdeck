@@ -80,6 +80,24 @@ Verified end-to-end against the K86 with firmware **1.19** (`yc500` opcode famil
 - `src/` — Svelte 5 + Vite UI: Screen / Knob / Lighting / Keymap / Macros / Settings
 - Writes travel `read → modify → write → re-read verify → rollback on mismatch`. Knob and keymap slot writes additionally require the reopen-after-write dance the firmware demands before it serves fresh data.
 
+## Auto-update
+
+SharkDeck ships with a signed in-app updater (`tauri-plugin-updater`): **Device → Updates → Check for updates**, then *Install & restart*. Artifacts are signed, and the app refuses anything whose signature does not match the embedded public key.
+
+One-time setup (run it in your terminal — the private key is deliberately never handled by an agent and never committed):
+
+```bash
+./scripts/setup-updater.sh
+```
+
+It generates the keypair, writes the public key into `src-tauri/tauri.conf.json`, and tells you to add `TAURI_SIGNING_PRIVATE_KEY` + `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` as repository secrets. After that, tagging releases is enough:
+
+```bash
+git tag v0.2.0 && git push origin v0.2.0
+```
+
+The workflow (`.github/workflows/release.yml`) builds the AppImage + deb, signs them, publishes `latest.json` and the artifacts on the GitHub release, and the running app picks the new version up from its update feed. The feed URL must be reachable without authentication — make the repository public, or point `plugins.updater.endpoints` at your own host.
+
 ## Credits & safety
 
 Protocol reverse-engineering drawn from three MIT-licensed projects — thank you to:

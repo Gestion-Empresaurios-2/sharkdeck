@@ -115,3 +115,54 @@ export type HostInfo = {
 };
 
 export const hostInfo = () => invoke<HostInfo>('host_info');
+
+// ---------------------------------------------------------------------------
+// Auto-update (tauri-plugin-updater + tauri-plugin-process)
+// ---------------------------------------------------------------------------
+import { check } from '@tauri-apps/plugin-updater';
+import { relaunch } from '@tauri-apps/plugin-process';
+import { getVersion } from '@tauri-apps/api/app';
+
+export type UpdateInfo = {
+  version: string;
+  currentVersion: string;
+  date?: string;
+  notes?: string;
+};
+
+export async function appVersion(): Promise<string> {
+  return await getVersion();
+}
+
+/** Returns null when the app is already up to date. */
+export async function checkForUpdate(): Promise<UpdateInfo | null> {
+  const u = await check();
+  if (!u) return null;
+  return {
+    version: u.version,
+    currentVersion: u.currentVersion,
+    date: u.date ?? undefined,
+    notes: u.body ?? undefined,
+  };
+}
+
+/** Downloads and installs the pending update, reporting progress 0..1. */
+export async function installUpdate(onProgress?: (p: number) => void): Promise<void> {
+  const u = await check();
+  if (!u) throw new Error('no update available');
+  let downloaded = 0;
+  let total = 0;
+  await u.downloadAndInstall((e) => {
+    if (e.event === 'Started') {
+      total = e.data.contentLength ?? 0;
+      downloaded = 0;
+    } else if (e.event === 'Progress') {
+      downloaded += e.data.chunkLength;
+      if (total > 0) onProgress?.(Math.min(1, downloaded / total));
+    }
+  });
+}
+
+export async function restartApp(): Promise<void> {
+  await relaunch();
+}

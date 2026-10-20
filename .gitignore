@@ -4,3 +4,8 @@ src-tauri/target/
 core/target/
 target/
 *.log
+
+# updater signing material (never commit)
+.updater/
+*.key
+*.sig

@@ -1,0 +1,106 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: 'core -> target, src-tauri -> target'
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev \
+            patchelf libgtk-3-dev libayatana-appindicator3-dev
+
+      - name: Install Tauri CLI
+        run: cargo install tauri-cli --version "^2.0" --locked
+
+      - name: Sync version from the tag
+        run: |
+          npm install
+          VERSION="${GITHUB_REF_NAME#v}"
+          node -e "
+            const fs=require('fs');
+            const p='src-tauri/tauri.conf.json';
+            const c=JSON.parse(fs.readFileSync(p,'utf8'));
+            c.version=process.env.VERSION;
+            fs.writeFileSync(p, JSON.stringify(c,null,2)+'\n');
+            const t=JSON.parse(fs.readFileSync('package.json','utf8'));
+            t.version=process.env.VERSION;
+            fs.writeFileSync('package.json', JSON.stringify(t,null,2)+'\n');
+          "
+          echo "version: $VERSION"
+
+      - name: Build bundles with updater artifacts
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: npm run tauri build -- --bundles appimage,deb
+
+      - name: Build the updater feed (latest.json)
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          node -e "
+            const fs=require('fs'), path=require('path');
+            const tag=process.env.TAG;
+            const base='https://github.com/'+process.env.GITHUB_REPOSITORY+'/releases/download/'+tag+'/';
+            const files=[];
+            for (const dir of ['appimage','deb']) {
+              const d=path.join('target/release/bundle',dir);
+              if (!fs.existsSync(d)) continue;
+              for (const f of fs.readdirSync(d)) {
+                if (f.endsWith('.sig')) continue;
+                const sig=f+'.sig';
+                if (!fs.existsSync(path.join(d,sig))) continue;
+                const bytes=fs.readFileSync(path.join(d,sig));
+                files.push({ name:f, url:base+encodeURIComponent(f), signature:bytes.toString('base64') });
+              }
+            }
+            if (!files.length) { console.error('no signed artifacts found'); process.exit(1); }
+            const version=tag.replace(/^v/,'');
+            const feed={ version, notes:'SharkDeck '+version, pub_date:new Date().toISOString(), platforms:{} };
+            for (const f of files) {
+              const key=f.name.endsWith('.AppImage') ? 'linux-x86_64' : 'linux-deb-x86_64';
+              feed.platforms[key]={ signature:f.signature, url:f.url };
+            }
+            fs.writeFileSync('latest.json', JSON.stringify(feed,null,2));
+            console.log(JSON.stringify(feed,null,2));
+          "
+
+      - name: Publish the release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            target/release/bundle/appimage/*.AppImage
+            target/release/bundle/appimage/*.AppImage.sig
+            target/release/bundle/deb/*.deb
+            target/release/bundle/deb/*.deb.sig
+            latest.json
+          body: |
+            SharkDeck ${{ github.ref_name }}
+
+            Install: download the AppImage, `chmod +x` it and run it.
+            Existing installs pick this up from Device → Updates → Check for updates.

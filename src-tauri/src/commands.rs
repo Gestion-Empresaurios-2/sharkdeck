@@ -2,6 +2,7 @@
 
 use sharkdeck_core::kb::{Keyboard, KbOptions, LightingState};
 use sharkdeck_core::layout;
+use sharkdeck_core::perkey::{self, KeyColour, PerKeyImage};
 use sharkdeck_core::protocol::{PixelOrder, SlotEntry};
 use sharkdeck_core::screen as scr;
 use std::fs;
@@ -109,6 +110,9 @@ pub struct AppState {
     pub log: Arc<Mutex<Vec<String>>>,
     pub config: Arc<Mutex<AppConfig>>,
     pub ready: std::sync::atomic::AtomicBool,
+    /// Duration of the last screen push (ms) — used to time-stamp clock
+    /// animations so the device starts them at the right second.
+    pub last_push_ms: std::sync::atomic::AtomicU64,
 }
 
 #[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
@@ -361,6 +365,107 @@ pub fn layout_get() -> Result<serde_json::Value, String> {
     serde_json::to_value(layout::k86_layout()).map_err(|e| e.to_string())
 }
 
+/// Per-key RGB grid: the K86 layout projected onto a colour grid (rows are
+/// the distinct key `y`, columns the distinct key `x`) plus the canvas
+/// rectangles the painter draws with. Also reports the flash-upload limiter
+/// state so the UI can show how many uploads are left.
+#[tauri::command]
+pub fn perkey_grid() -> Result<serde_json::Value, String> {
+    let layout = layout::k86_layout();
+    let map = perkey::grid_map(layout);
+    let mut cells: Vec<serde_json::Value> = Vec::with_capacity(layout.keys.len());
+    for (i, key) in layout.keys.iter().enumerate() {
+        let Some((col, row)) = map.cell_of_key(i) else {
+            continue;
+        };
+        cells.push(serde_json::json!({
+            "slot": key.slot,
+            "code": key.code,
+            "text": key.text.clone().unwrap_or_default(),
+            "col": col,
+            "row": row,
+            "cell": map.cell_index(col, row),
+            "x": key.x,
+            "y": key.y,
+            "w": key.w,
+            "h": key.h,
+        }));
+    }
+    let status = perkey::userpic_status();
+    Ok(serde_json::json!({
+        "width": map.width,
+        "height": map.height,
+        "canvas": { "width": layout.canvas.width, "height": layout.canvas.height },
+        "keyCount": map.occupied(),
+        "cells": cells,
+        "unusedSlots": layout.unused.iter().map(|u| u.matrix_index).collect::<Vec<u8>>(),
+        "uploads": {
+            "allowed": status.allowed,
+            "remaining": status.remaining,
+            "max": status.max,
+            "windowS": status.window_s,
+            "nextAllowedInS": status.next_allowed_in_s,
+        }
+    }))
+}
+
+/// Push a per-key colour image to the keyboard.
+///
+/// `cells` carries one `[r, g, b]` triple per grid cell (row-major, exactly
+/// `width * height` entries). With `dry_run` the payload is only encoded —
+/// nothing is written to the device. A real upload is a FLASH write limited
+/// to 2 per 10 s by the limiter inside `Keyboard::set_userpic`.
+#[tauri::command]
+pub fn perkey_push(
+    app: tauri::State<'_, AppState>,
+    cells: Vec<[u8; 3]>,
+    dry_run: bool,
+) -> Result<serde_json::Value, String> {
+    let layout = layout::k86_layout();
+    let map = perkey::grid_map(layout);
+    let mut image = PerKeyImage::new(map.width, map.height);
+    if cells.len() != image.pixels.len() {
+        return Err(format!(
+            "expected {} cells, got {}",
+            image.pixels.len(),
+            cells.len()
+        ));
+    }
+    for (i, c) in cells.iter().enumerate() {
+        image.pixels[i] = KeyColour::new(c[0], c[1], c[2]);
+    }
+    let blob = perkey::encode_with(&image, layout);
+    let chunks = (blob.len() + perkey::USERPIC_CHUNK - 1) / perkey::USERPIC_CHUNK;
+    if dry_run {
+        let status = perkey::userpic_status();
+        return Ok(serde_json::json!({
+            "sent": false,
+            "dry_run": true,
+            "bytes": blob.len(),
+            "chunks": chunks,
+            "keys": map.occupied(),
+            "remaining": status.remaining,
+            "next_allowed_in_s": status.next_allowed_in_s,
+        }));
+    }
+    let kb = kb_of(&app)?;
+    kb.set_userpic(&blob)?;
+    let status = perkey::userpic_status();
+    log(
+        &app,
+        format!("perkey upload: {} bytes in {} chunks", blob.len(), chunks),
+    );
+    Ok(serde_json::json!({
+        "sent": true,
+        "dry_run": false,
+        "bytes": blob.len(),
+        "chunks": chunks,
+        "keys": map.occupied(),
+        "remaining": status.remaining,
+        "next_allowed_in_s": status.next_allowed_in_s,
+    }))
+}
+
 /// Upload a frame prepared in the frontend canvas. `rgba_b64` holds 4 bytes
 /// per pixel in row-major order.
 #[tauri::command]
@@ -515,14 +620,20 @@ pub fn screen_clock(
     let cfg = *app.config.lock().unwrap();
     let kb = kb_of(&app)?;
     let n = frames.unwrap_or(cfg.max_frames).max(1).min(255);
+    // The device only starts playing the animation once the upload finished,
+    // so stamp the frames from the moment the device will actually begin —
+    // estimated from the duration of the previous push (self-correcting).
+    let offset_secs = (app.last_push_ms.load(std::sync::atomic::Ordering::Relaxed) as i64 / 1000) + 1;
+    let t0 = std::time::Instant::now();
     let packed = scr::frames_to_565(
-        &scr::clock_frames(
+        &scr::clock_frames_from(
             n,
             with_seconds,
             color.unwrap_or([230, 233, 242]).into(),
             background.unwrap_or([10, 12, 18]).into(),
             cfg.screen_width,
             cfg.screen_height,
+            offset_secs,
         ),
         cfg.order,
     );
@@ -533,6 +644,8 @@ pub fn screen_clock(
         .map(|(b, d)| (b.as_slice(), *d))
         .collect();
     kb.screen_write_animation(&refs, cfg.screen_width as u16, cfg.screen_height as u16)?;
+    app.last_push_ms
+        .store(t0.elapsed().as_millis() as u64, std::sync::atomic::Ordering::Relaxed);
     Ok(())
 }
 

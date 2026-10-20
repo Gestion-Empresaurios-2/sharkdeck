@@ -394,8 +394,23 @@ pub fn clock_frames(
     w: u32,
     h: u32,
 ) -> Vec<(RgbaFrame, u8)> {
+    clock_frames_from(n, with_seconds, fg, bg, w, h, 0)
+}
+
+/// Same as [`clock_frames`] but the first frame is stamped `offset_secs` in the
+/// future: the device only starts playing the animation after the whole
+/// upload finished, so without the offset the clock would start in the past.
+pub fn clock_frames_from(
+    n: usize,
+    with_seconds: bool,
+    fg: Bgr,
+    bg: Bgr,
+    w: u32,
+    h: u32,
+    offset_secs: i64,
+) -> Vec<(RgbaFrame, u8)> {
     use chrono::Local;
-    let start = Local::now();
+    let start = Local::now() + chrono::Duration::seconds(offset_secs);
     let mut out = Vec::with_capacity(n);
     for i in 0..n {
         let t = start + chrono::Duration::seconds(i as i64);

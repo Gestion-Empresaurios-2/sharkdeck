@@ -10,9 +10,10 @@
 //! doc. MIT credits apply throughout.
 
 use crate::hid::{ApiBox, SharedApi};
+use crate::perkey;
 use crate::protocol::*;
 use std::thread::sleep;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 pub const PROFILE_WAIT_MS: u64 = 500;
 pub const IDENTIFY_WAIT_MS: u64 = 30;
@@ -483,6 +484,20 @@ impl Keyboard {
     /// Stream RGB565 pixels in 56-byte chunks (0x25), ~1 ms between chunks.
     /// p[0]=0x25, p[1]=frameIndex, p[2]=allFrames, p[3]=delay,
     /// p[4..5]=chunk # u16 LE, p[6]=len<=56, p[7]=bit7 ck, data at p[8..64].
+    /// Inter-chunk pacing for the screen stream, in MICROSECONDS (0 = as fast
+    /// as the USB endpoint allows). Read once from the environment.
+    /// Default 200 µs: ~0.23 s per 240x135 frame, i.e. ~4x faster than the 1 s
+    /// clock cadence, so the device never has to skip a frame.
+    fn chunk_delay_us() -> u64 {
+        static DELAY: std::sync::OnceLock<u64> = std::sync::OnceLock::new();
+        *DELAY.get_or_init(|| {
+            std::env::var("SHARKDECK_CHUNK_DELAY_US")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(200)
+        })
+    }
+
     pub fn screen_stream(&self, bytes: &[u8], frame_index: u8, all_frames: u8, delay: u8) -> Result<(), String> {
         self.api.with(&self.path, |dev| {
             for (n, chunk) in bytes.chunks(SCREEN_CHUNK).enumerate() {
@@ -502,7 +517,15 @@ impl Keyboard {
                 let mut wire = [0u8; FEATURE_LEN];
                 wire[1..].copy_from_slice(&p);
                 dev.send_feature_report(&wire).map_err(|e| e.to_string())?;
-                sleep(Duration::from_millis(1));
+                // Pacing: 200 µs by default. The old 1 ms sleep cost ~1.16 s per
+                // 240x135 frame (1158 chunks), i.e. slower than the 1 s clock
+                // cadence — the device then skipped frames and the on-screen
+                // seconds jumped. Override with SHARKDECK_CHUNK_DELAY_US=1000
+                // for firmware that needs the old pacing.
+                let d = Self::chunk_delay_us();
+                if d > 0 {
+                    sleep(Duration::from_micros(d));
+                }
             }
             Ok(())
         })
@@ -595,5 +618,54 @@ impl Keyboard {
             }
             Ok(None)
         })
+    }
+
+    // ---- per-key RGB (SET_USERPIC, 0x0C) ----
+
+    /// Upload a per-key colour image to the keyboard's flash.
+    ///
+    /// FLASH write: the firmware accepts at most 2 uploads per 10 s and a
+    /// stalled endpoint only recovers after unplug/replug. The process-wide
+    /// rate limiter is checked BEFORE the first chunk goes out, so a refused
+    /// upload never touches the device.
+    ///
+    /// `payload` is the blob built by [`crate::perkey::encode`]: one 4-byte
+    /// entry (`slot, r, g, b`) per key. It is streamed in 56-byte chunks,
+    /// each chunk carried by one 65-byte feature report (see the perkey
+    /// module for the full wire layout).
+    pub fn set_userpic(&self, payload: &[u8]) -> Result<(), String> {
+        if payload.is_empty() {
+            return Err("empty userpic payload".into());
+        }
+        {
+            let mut limiter = perkey::upload_limiter().lock().unwrap();
+            limiter.allow(Instant::now())?;
+        }
+        let total = payload.len() as u16;
+        let chunks = (payload.len() + perkey::USERPIC_CHUNK - 1) / perkey::USERPIC_CHUNK;
+        for (n, chunk) in payload.chunks(perkey::USERPIC_CHUNK).enumerate() {
+            let mut p = [0u8; REPORT_LEN];
+            p[0] = perkey::OP_SET_USERPIC;
+            p[1] = n as u8; // chunk index
+            p[2] = chunks as u8; // chunk count
+            p[3] = chunk.len() as u8; // bytes in this chunk
+            p[4] = (total & 0xFF) as u8; // total length, u16 LE
+            p[5] = ((total >> 8) & 0xFF) as u8;
+            p[7] = checksum7(&p); // bit7 checksum
+            p[8..8 + chunk.len()].copy_from_slice(chunk);
+            let mut wire = [0u8; FEATURE_LEN];
+            wire[1..].copy_from_slice(&p);
+            self.api.with(&self.path, |dev| {
+                dev.send_feature_report(&wire).map_err(|e| e.to_string())
+            })?;
+            sleep(Duration::from_millis(10));
+        }
+        Ok(())
+    }
+
+    /// Whether a per-key flash upload may be sent right now (rate limiter
+    /// state). Never touches the device.
+    pub fn userpic_status(&self) -> Result<perkey::UserpicStatus, String> {
+        Ok(perkey::userpic_status())
     }
 }

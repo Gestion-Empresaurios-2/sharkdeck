@@ -329,41 +329,39 @@
   }
   pre.mono {
     background: rgba(0, 0, 0, 0.3);
-    border: 1px solid var(--border);
     border-radius: 9px;
     padding: 10px 12px;
     font-size: 11.5px;
     color: #9fe3b0;
     white-space: pre-wrap;
     user-select: all;
-  }
+  box-shadow: var(--elev-1);
+}
   .log {
     max-height: 220px;
     overflow-y: auto;
     font-size: 11px;
     color: var(--text-dim);
     background: rgba(0, 0, 0, 0.25);
-    border: 1px solid var(--border);
     border-radius: 9px;
     padding: 10px 12px;
     display: flex;
     flex-direction: column-reverse;
     gap: 3px;
     user-select: all;
-  }
+  box-shadow: var(--elev-1);
+}
   .opt {
     display: flex;
     gap: 12px;
     align-items: flex-start;
     padding: 9px 0;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
     font-size: 13px;
   }
   .notes {
     margin: 8px 0 0;
     padding: 8px 10px;
     background: var(--panel-2);
-    border: 1px solid var(--border);
     border-radius: 8px;
     font-family: 'Ubuntu Mono', 'DejaVu Sans Mono', monospace;
     font-size: 11.5px;
@@ -371,10 +369,11 @@
     white-space: pre-wrap;
     max-height: 120px;
     overflow: auto;
-  }
+  box-shadow: var(--elev-1);
+}
   .opt:last-of-type {
     border-bottom: none;
-  }
+}
   .opt input {
     margin-top: 2px;
   }

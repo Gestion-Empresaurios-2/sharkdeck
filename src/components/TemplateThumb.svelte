@@ -37,7 +37,7 @@
     display: block;
     image-rendering: pixelated;
     border-radius: 5px;
-    border: 1px solid var(--border-strong);
     background: #000;
-  }
+  box-shadow: var(--elev-1);
+}
 </style>

@@ -207,7 +207,8 @@
     place-items: center;
     font-size: 18px;
     color: #fff;
-  }
+  box-shadow: var(--elev-1);
+}
   .name {
     font-weight: 650;
     font-size: 15px;
@@ -216,11 +217,11 @@
     padding: 10px 12px;
     border-radius: 10px;
     background: rgba(0, 0, 0, 0.25);
-    border: 1px solid var(--border);
     font-size: 13px;
-  }
+  box-shadow: var(--elev-1);
+}
   .editbox {
     margin-bottom: 16px;
     border-color: rgba(91, 140, 255, 0.35);
-  }
+}
 </style>

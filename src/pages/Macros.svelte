@@ -277,10 +277,9 @@
     padding: 28px;
     text-align: center;
     color: var(--text-faint);
-    border: 1px dashed var(--border);
     border-radius: 10px;
     font-size: 13px;
-  }
+}
   .steps {
     display: flex;
     flex-direction: column;
@@ -295,8 +294,8 @@
     padding: 8px 12px;
     border-radius: 9px;
     background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.05);
-  }
+  box-shadow: var(--elev-1);
+}
   .idx {
     color: var(--text-faint);
     font-size: 10.5px;
@@ -311,7 +310,7 @@
     font-size: 15px;
     padding: 2px 6px;
     border-radius: 6px;
-  }
+}
   .x:hover {
     color: var(--err);
     background: rgba(248, 113, 113, 0.1);

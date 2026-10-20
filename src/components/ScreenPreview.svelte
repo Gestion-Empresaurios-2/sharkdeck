@@ -72,7 +72,6 @@
   }
   .frame {
     background: #e9e8e7;
-    border: 1px solid var(--border-strong);
     border-radius: 10px;
     image-rendering: pixelated;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);

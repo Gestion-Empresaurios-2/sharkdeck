@@ -2,10 +2,10 @@
 
 :root {
   /* Adwaita-light surfaces */
-  --bg: #f4f4f6;
-  --panel: rgba(255, 255, 255, 0.74);
+  --bg: #e8e8ec;
+  --panel: rgba(255, 255, 255, 0.82);
   --panel-solid: #ffffff;
-  --panel-2: rgba(242, 242, 245, 0.78);
+  --panel-2: rgba(246, 246, 248, 0.9);
   --panel-hover: rgba(0, 0, 0, 0.05);
   --border: rgba(0, 0, 0, 0.11);
   --border-strong: rgba(0, 0, 0, 0.18);
@@ -25,7 +25,10 @@
 
   --radius: 14px;
   --radius-sm: 9px;
-  --shadow: 0 1px 2px rgba(0, 0, 0, 0.05), 0 10px 30px rgba(0, 0, 0, 0.07);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 10px 30px rgba(0, 0, 0, 0.08);
+  --elev-1: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --elev-2: 0 1px 2px rgba(0, 0, 0, 0.04), 0 8px 24px rgba(0, 0, 0, 0.08);
+  --elev-3: 0 2px 6px rgba(0, 0, 0, 0.06), 0 18px 40px rgba(0, 0, 0, 0.12);
   --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.04);
   --material: saturate(180%) blur(22px);
   --material-border: rgba(255, 255, 255, 0.6);
@@ -50,10 +53,10 @@
 
 :root[data-theme='dark'] {
   /* Adwaita-dark surfaces */
-  --bg: #1b1c1e;
-  --panel: rgba(40, 41, 44, 0.74);
-  --panel-solid: #292a2d;
-  --panel-2: rgba(52, 53, 56, 0.66);
+  --bg: #161719;
+  --panel: rgba(46, 47, 50, 0.82);
+  --panel-solid: #2d2e31;
+  --panel-2: rgba(58, 59, 63, 0.62);
   --panel-hover: rgba(255, 255, 255, 0.07);
   --border: rgba(255, 255, 255, 0.1);
   --border-strong: rgba(255, 255, 255, 0.16);
@@ -69,7 +72,10 @@
   --warn: #e19e31;
   --err: #ef4451;
 
-  --shadow: 0 1px 2px rgba(0, 0, 0, 0.45), 0 2px 8px rgba(0, 0, 0, 0.35);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 28px rgba(0, 0, 0, 0.45);
+  --elev-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --elev-2: 0 1px 2px rgba(0, 0, 0, 0.35), 0 8px 24px rgba(0, 0, 0, 0.4);
+  --elev-3: 0 2px 8px rgba(0, 0, 0, 0.45), 0 20px 44px rgba(0, 0, 0, 0.55);
 
   --field: #202124;
   --hairline: rgba(255, 255, 255, 0.08);
@@ -120,23 +126,25 @@ button {
   background: none;
   cursor: pointer;
   -webkit-app-region: no-drag;
+  box-shadow: var(--elev-1);
 }
 
 select,
 input[type='number'],
 input[type='text'] {
   background: var(--field);
-  border: 1px solid var(--border-strong);
+  border: none;
   border-radius: var(--radius-sm);
   padding: 7px 9px;
   outline: none;
-  transition: border-color 0.12s, box-shadow 0.12s;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.05);
+  transition: box-shadow 0.14s cubic-bezier(0.32, 0.72, 0, 1), background 0.14s;
 }
 
 select:focus,
 input:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent-soft);
+  background: var(--panel-solid);
+  box-shadow: 0 0 0 2px var(--accent-soft), inset 0 1px 2px rgba(0, 0, 0, 0.04);
 }
 
 /* Keyboard focus: a visible ring on every interactive surface. */
@@ -172,9 +180,10 @@ input[type='range'] {
 input[type='color'] {
   width: 34px;
   height: 30px;
-  border: 1px solid var(--border-strong);
+  border: none;
   border-radius: var(--radius-sm);
-  background: none;
+  background: var(--panel-solid);
+  box-shadow: var(--elev-1);
   padding: 2px;
   cursor: pointer;
 }
@@ -192,8 +201,9 @@ input[type='checkbox'] {
 ::-webkit-scrollbar-thumb {
   background: var(--scroll-thumb);
   border-radius: 8px;
-  border: 2px solid transparent;
+  border: none;
   background-clip: content-box;
+  box-shadow: var(--elev-1);
 }
 ::-webkit-scrollbar-thumb:hover {
   background: var(--scroll-thumb-hover);
@@ -209,10 +219,10 @@ input[type='checkbox'] {
   background: var(--panel);
   backdrop-filter: var(--material);
   -webkit-backdrop-filter: var(--material);
-  border: 1px solid var(--border);
+  border: none;
   border-radius: var(--radius);
   padding: 16px 18px;
-  box-shadow: var(--shadow);
+  box-shadow: var(--elev-2);
 }
 
 .panel h3 {
@@ -273,15 +283,15 @@ input[type='checkbox'] {
   gap: 8px;
   padding: 8px 14px;
   border-radius: var(--radius-sm);
-  border: 1px solid var(--border-strong);
+  border: none;
   background: var(--panel-solid);
-  box-shadow: var(--shadow-soft);
+  box-shadow: var(--elev-1);
   color: var(--text);
   font-weight: 500;
   font-size: 13px;
   transition:
     background 0.16s cubic-bezier(0.32, 0.72, 0, 1),
-    border-color 0.16s cubic-bezier(0.32, 0.72, 0, 1),
+    background 0.16s cubic-bezier(0.32, 0.72, 0, 1),
     box-shadow 0.16s cubic-bezier(0.32, 0.72, 0, 1),
     transform 0.12s cubic-bezier(0.32, 0.72, 0, 1);
   white-space: nowrap;
@@ -289,7 +299,7 @@ input[type='checkbox'] {
 
 .btn:hover {
   background: var(--panel-2);
-  border-color: var(--border-strong);
+  box-shadow: var(--elev-2);
 }
 
 .btn:active {
@@ -307,10 +317,12 @@ input[type='checkbox'] {
   border-color: var(--accent);
   color: #fff;
   font-weight: 600;
+  box-shadow: var(--elev-1);
 }
 .btn.primary:hover {
   background: var(--accent-hover);
   border-color: var(--accent-hover);
+  box-shadow: var(--elev-1);
 }
 
 .btn.danger {
@@ -334,8 +346,9 @@ input[type='checkbox'] {
   font-size: 11.5px;
   font-weight: 500;
   border-radius: 99px;
-  border: 1px solid var(--border);
+  border: none;
   background: var(--panel-2);
+  box-shadow: var(--elev-1);
   color: var(--text-dim);
 }
 
@@ -343,16 +356,19 @@ input[type='checkbox'] {
   color: var(--ok);
   border-color: rgba(38, 143, 81, 0.35);
   background: rgba(38, 143, 81, 0.08);
+  box-shadow: var(--elev-1);
 }
 .pill.warn {
   color: var(--warn);
   border-color: rgba(195, 85, 3, 0.35);
   background: rgba(195, 85, 3, 0.07);
+  box-shadow: var(--elev-1);
 }
 .pill.err {
   color: var(--err);
   border-color: rgba(215, 28, 45, 0.3);
   background: rgba(215, 28, 45, 0.06);
+  box-shadow: var(--elev-1);
 }
 
 .dot {
@@ -360,13 +376,15 @@ input[type='checkbox'] {
   height: 7px;
   border-radius: 50%;
   background: currentColor;
+  box-shadow: var(--elev-1);
 }
 
 .chip {
   padding: 4px 10px;
   border-radius: var(--radius-sm);
-  border: 1px solid var(--border);
+  border: none;
   background: var(--panel);
+  box-shadow: var(--elev-1);
   font-size: 12px;
   color: var(--text-dim);
   cursor: pointer;
@@ -381,13 +399,13 @@ input[type='checkbox'] {
   border-color: var(--accent);
   color: #fff;
   font-weight: 600;
+  box-shadow: var(--elev-1);
 }
 
 .kv {
   display: flex;
   justify-content: space-between;
   padding: 7px 0;
-  border-bottom: 1px solid var(--hairline);
   font-size: 13px;
 }
 .kv:last-child {

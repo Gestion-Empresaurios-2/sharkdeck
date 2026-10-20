@@ -79,7 +79,7 @@
     clock: 'Clock', date: 'Date', ticker: 'Ticker', wave: 'Wave', rain: 'Rain',
     border: 'Frame', eq: 'Equalizer', scanlines: 'Scanlines', fin: 'Brand fin', meter: 'Meter',
     watch: 'Watch face', datewin: 'Date window', battery: 'Battery', ring: 'Ring', steps: 'Steps',
-  };
+};
 
   /** Clock style presets — size = fraction of panel height (null = auto). */
   const CLOCK_STYLES: { label: string; size: number | null }[] = [
@@ -388,12 +388,12 @@
     align-items: center;
     gap: 4px;
     background: var(--panel-2);
-    border: 1px solid var(--border);
     border-radius: var(--radius);
     padding: 8px;
     cursor: pointer;
     text-align: center;
-  }
+  box-shadow: var(--elev-1);
+}
   .tpl-card:hover { background: var(--hover); }
   .tpl-card.sel {
     border-color: var(--accent);
@@ -405,8 +405,7 @@
     border-radius: 5px;
     display: block;
     image-rendering: pixelated;
-    border: 1px solid var(--border-strong);
-  }
+}
   .tpl-name { font-size: 12.5px; font-weight: 600; color: var(--text); }
   .tpl-desc { font-size: 10.5px; color: var(--dim); }
   .comp-row {
@@ -414,12 +413,12 @@
     align-items: center;
     gap: 8px;
     padding: 6px 8px;
-    border: 1px solid var(--border);
     border-radius: 8px;
     background: var(--panel-2);
     margin-bottom: 6px;
     flex-wrap: wrap;
-  }
+  box-shadow: var(--elev-1);
+}
   .comp-kind {
     font-size: 12px;
     font-weight: 600;
@@ -434,10 +433,10 @@
     width: 34px;
     height: 26px;
     padding: 1px;
-    border: 1px solid var(--border-strong);
     border-radius: 6px;
     background: var(--panel);
-  }
+  box-shadow: var(--elev-1);
+}
   .numlab {
     font-size: 11.5px;
     color: var(--dim);
@@ -446,7 +445,6 @@
     gap: 5px;
   }
   .icon-btn {
-    border: 1px solid var(--border);
     background: var(--panel);
     border-radius: 6px;
     width: 24px;
@@ -454,9 +452,11 @@
     line-height: 1;
     color: var(--dim);
     cursor: pointer;
-  }
+  box-shadow: var(--elev-1);
+}
   .icon-btn:hover { background: var(--hover); color: var(--text); }
-  .icon-btn.danger:hover { color: var(--err); border-color: var(--err); }
+  .icon-btn.danger:hover { color: var(--err); border-color: var(--err);
+}
   .chiprow {
     display: inline-flex;
     gap: 4px;
@@ -470,8 +470,8 @@
   .geom { margin-top: 8px; }
   .slot-sel {
     padding: 7px 10px;
-    border: 1px solid var(--border-strong);
     border-radius: 8px;
     background: var(--panel);
-  }
+  box-shadow: var(--elev-1);
+}
 </style>

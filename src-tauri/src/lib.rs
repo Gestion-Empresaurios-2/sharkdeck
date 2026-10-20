@@ -36,6 +36,8 @@ pub fn run() {
             commands::config_set,
             commands::logs_get,
             commands::layout_get,
+            commands::perkey_grid,
+            commands::perkey_push,
             commands::screen_push,
             commands::screen_import,
             commands::screen_pattern,

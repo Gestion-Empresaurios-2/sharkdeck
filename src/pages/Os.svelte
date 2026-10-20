@@ -25,6 +25,9 @@
   let busy = $state(false);
   let canvas: HTMLCanvasElement | undefined = $state();
   let dpr = 1;
+  let cycling = $state(false);
+  let cycleSecs = $state(6);
+  let pushOnCycle = $state(false);
 
   const W = $derived(cfg?.screen_width ?? 240);
   const H = $derived(cfg?.screen_height ?? 135);
@@ -40,9 +43,11 @@
       tickOs();
       paint();
     }, 1000);
+    window.addEventListener('keydown', onKey);
     return () => {
       clearInterval(t);
       stopLive();
+      window.removeEventListener('keydown', onKey);
     };
   });
 
@@ -87,15 +92,41 @@
     osState.page = OS_PAGES[n].id;
   }
 
-  async function push() {
+  /* Auto-cycling: step through all 9 screens, optionally pushing each one. */
+  $effect(() => {
+    if (!cycling) return;
+    const every = Math.max(2, cycleSecs) * 1000;
+    const id = setInterval(() => {
+      cycle(1);
+      if (pushOnCycle) void push(true);
+    }, every);
+    return () => clearInterval(id);
+  });
+
+  /* Keyboard: ← / → walk the screens. */
+  function onKey(e: KeyboardEvent) {
+    const el = e.target as HTMLElement | null;
+    if (el && ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName)) return;
+    if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      cycle(-1);
+    } else if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      cycle(1);
+    }
+  }
+
+  async function push(silent = false) {
     if (!store.device) return toast('err', 'No device connected');
     busy = true;
     try {
       const frames = osFrames(osState.page, W, H, 1);
       await api.screenAnimPush(frames, W, H, cfg?.order);
-      toast('ok', `${OS_PAGES.find((p) => p.id === osState.page)?.label} pushed to the keyboard`);
+      if (!silent) {
+        toast('ok', `${OS_PAGES.find((p) => p.id === osState.page)?.label} pushed to the keyboard`);
+      }
     } catch (e) {
-      toast('err', errText(e));
+      if (!silent) toast('err', errText(e));
     } finally {
       busy = false;
     }
@@ -105,9 +136,9 @@
     if (!store.device) return toast('err', 'No device connected');
     busy = true;
     try {
-      const frames = osFrames(osState.page, W, H, 12);
+      const frames = osFrames(osState.page, W, H, 15);
       await api.screenAnimPush(frames, W, H, cfg?.order);
-      toast('ok', 'Animated OS page pushed (12 frames)');
+      toast('ok', 'Animated OS page pushed (15 frames)');
     } catch (e) {
       toast('err', errText(e));
     } finally {
@@ -139,6 +170,19 @@
       <div class="stage-actions">
         <button class="btn sm" onclick={() => cycle(-1)} aria-label="Previous screen">‹</button>
         <button class="btn sm" onclick={() => cycle(1)} aria-label="Next screen">›</button>
+        <button class="btn sm" class:active={cycling} onclick={() => (cycling = !cycling)} aria-pressed={cycling}>
+          {cycling ? 'Stop cycle' : 'Cycle screens'}
+        </button>
+        <select class="btn sm cycle-secs" bind:value={cycleSecs} aria-label="Cycle interval">
+          <option value={3}>3s</option>
+          <option value={6}>6s</option>
+          <option value={10}>10s</option>
+          <option value={20}>20s</option>
+        </select>
+        <label class="chk push-cycle">
+          <input type="checkbox" bind:checked={pushOnCycle} />
+          push each
+        </label>
         <button class="btn sm" onclick={resetOs}>Reset</button>
         <button class="btn primary" disabled={busy || !store.device} onclick={() => void push()}>
           {#if busy}<span class="spinner"></span>{/if}
@@ -166,7 +210,7 @@
     </div>
 
     <div class="stage-foot">
-      <button class="btn sm" disabled={busy || !store.device} onclick={() => void pushAnimation()}>Push 12-frame animation</button>
+      <button class="btn sm" disabled={busy || !store.device} onclick={() => void pushAnimation()}>Push 30-frame animation</button>
       <span class="hint">The keyboard loops animated frames; the live clock on the home screen re-pushes itself every minute.</span>
     </div>
   </section>
@@ -289,7 +333,6 @@
 
   /* ---- left rail ---- */
   .os-rail {
-    border-right: 1px solid var(--border);
     padding: 22px 12px 18px;
     display: flex;
     flex-direction: column;
@@ -313,25 +356,26 @@
     text-align: left;
     padding: 9px 12px;
     border-radius: 9px;
-    border: 1px solid transparent;
     background: transparent;
     color: var(--text);
     cursor: pointer;
-  }
+  box-shadow: var(--elev-1);
+}
   .rail-item:hover {
     background: var(--hover);
   }
   .rail-item.sel {
     background: var(--panel-2);
     border-color: var(--border);
-  }
+  box-shadow: var(--elev-1);
+}
   .rail-dot {
     width: 6px;
     height: 6px;
     border-radius: 50%;
     grid-row: 1 / span 2;
     justify-self: center;
-  }
+}
   .rail-label {
     font-size: 13px;
     font-weight: 600;
@@ -386,7 +430,6 @@
     padding: 13px;
     border-radius: 20px;
     background: linear-gradient(150deg, #3d454c 0%, #171d23 18%, #10151a 80%, #2b333a 100%);
-    border: 1px solid #4b545d;
     box-shadow: 0 26px 60px rgba(0, 0, 0, 0.32), 0 2px 6px rgba(0, 0, 0, 0.3);
     position: relative;
   }
@@ -395,7 +438,6 @@
     position: absolute;
     inset: 6px;
     border-radius: 15px;
-    border: 1px solid rgba(0, 0, 0, 0.5);
     pointer-events: none;
   }
   .device-screen {
@@ -434,7 +476,8 @@
     height: 3px;
     border-radius: 50%;
     background: var(--faint);
-  }
+  box-shadow: var(--elev-1);
+}
   .stage-foot {
     display: flex;
     align-items: center;
@@ -444,7 +487,6 @@
 
   /* ---- inspector ---- */
   .os-inspector {
-    border-left: 1px solid var(--border);
     background: var(--panel);
     padding: 20px 20px 28px;
     overflow-y: auto;
@@ -483,16 +525,16 @@
     gap: 6px;
     padding: 8px 4px;
     border-radius: 10px;
-    border: 1px solid var(--border);
     background: var(--panel-2);
     color: var(--dim);
     font-size: 10px;
     cursor: pointer;
-  }
+  box-shadow: var(--elev-1);
+}
   .accent.sel {
     border-color: var(--accent);
     color: var(--text);
-  }
+}
   .accent-swatch {
     width: 26px;
     height: 26px;
@@ -507,7 +549,6 @@
   .wall {
     height: 52px;
     border-radius: 9px;
-    border: 2px solid transparent;
     color: #fff;
     font-size: 9.5px;
     font-weight: 600;
@@ -516,10 +557,10 @@
     padding: 5px 6px;
     cursor: pointer;
     text-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
-  }
+}
   .wall.sel {
     border-color: var(--accent);
-  }
+}
   .layouts {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
@@ -532,30 +573,30 @@
     gap: 6px;
     padding: 9px 5px;
     border-radius: 10px;
-    border: 1px solid var(--border);
     background: var(--panel-2);
     color: var(--dim);
     font-size: 10px;
     cursor: pointer;
-  }
+  box-shadow: var(--elev-1);
+}
   .layout.sel {
     border-color: var(--accent);
     color: var(--text);
-  }
+}
   .layout-sketch {
     width: 54px;
     height: 30px;
-    border: 1px solid var(--border-strong);
     border-radius: 4px;
     display: flex;
     gap: 3px;
     padding: 3px;
-  }
+}
   .layout-sketch i {
     background: var(--faint);
     border-radius: 2px;
     opacity: 0.6;
-  }
+  box-shadow: var(--elev-1);
+}
   .layout-sketch.hero i:first-child {
     width: 62%;
     height: 100%;
@@ -591,11 +632,11 @@
     width: 100%;
     padding: 7px 9px;
     border-radius: 8px;
-    border: 1px solid var(--border-strong);
     background: var(--field);
     color: var(--text);
     font-size: 12px;
-  }
+  box-shadow: var(--elev-1);
+}
   .row-between {
     display: flex;
     align-items: center;
@@ -608,10 +649,9 @@
   }
   .seg {
     display: inline-flex;
-    border: 1px solid var(--border);
     border-radius: 8px;
     overflow: hidden;
-  }
+}
   .seg button {
     border: none;
     background: transparent;
@@ -620,9 +660,31 @@
     font-weight: 600;
     padding: 5px 10px;
     cursor: pointer;
-  }
+  box-shadow: var(--elev-1);
+}
   .seg button.sel {
     background: var(--panel-2);
     color: var(--text);
+  }
+
+  /* cycle toolbar */
+  .stage-actions .btn.active {
+    background: var(--accent);
+    color: #fff;
+    box-shadow: var(--elev-1);
+  }
+  .cycle-secs {
+    padding: 0 8px;
+    min-width: 62px;
+  }
+  .push-cycle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11.5px;
+    color: var(--text-dim);
+  }
+  .push-cycle input {
+    accent-color: var(--accent);
   }
 </style>

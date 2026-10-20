@@ -12,9 +12,11 @@
 //!   display                           display parameter probe
 //!   macro-get <slot>                  hexdump a macro slot
 //!   scan                              list HID candidate paths
+//!   perkey-dry                        (hidden) per-key RGB grid + payload size
 
 use sharkdeck_core::kb::{Keyboard, LightingState};
 use sharkdeck_core::layout;
+use sharkdeck_core::perkey::{self, PerKeyImage};
 use sharkdeck_core::protocol::{mods, PixelOrder};
 use sharkdeck_core::screen as scr;
 
@@ -117,6 +119,8 @@ fn run(cmd: &str, args: &[String]) -> i32 {
             else { Err(format!("readback != written ({:?} != {:?})", back.0, mute.0)) }
         }),
         "scan" => cmd_scan(),
+        // hidden debug helper: per-key RGB geometry, no device access
+        "perkey-dry" => cmd_perkey_dry(),
         _ => {
             eprintln!("unknown command: {cmd}");
             2
@@ -542,6 +546,21 @@ fn cmd_macro_get(slot: u8) -> i32 {
         }
         Ok(out)
     })
+}
+
+/// Hidden debug helper: per-key RGB grid geometry and payload size for the
+/// current layout. Pure computation — the device is never opened.
+fn cmd_perkey_dry() -> i32 {
+    let lay = layout::k86_layout();
+    let map = perkey::grid_map(lay);
+    let image = PerKeyImage::from_layout(lay);
+    let blob = perkey::encode_with(&image, lay);
+    let chunks = (blob.len() + perkey::USERPIC_CHUNK - 1) / perkey::USERPIC_CHUNK;
+    println!("grid: {} x {} cells", map.width, map.height);
+    println!("keys: {}", map.occupied());
+    println!("encoded: {} bytes (4 per key)", blob.len());
+    println!("chunks: {} x {} bytes", chunks, perkey::USERPIC_CHUNK);
+    0
 }
 
 /// List every HID path (for plumbing debug).

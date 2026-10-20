@@ -364,7 +364,7 @@ function dashPage(ctx: CanvasRenderingContext2D, w: number, h: number) {
   // stat tile
   glass(ctx, 9, 33, 96, 52);
   text(ctx, 'CPU ACTIVITY', 16, 44, 6, 'rgba(255,255,255,0.6)', { weight: 700 });
-  text(ctx, String(osState.metrics.cpu), 16, 66, 20, '#ffffff', { weight: 760 });
+  text(ctx, String(osState.metrics.cpu), 16, 66, 20, metricColor(osState.metrics.cpu, 'load'), { weight: 760 });
   text(ctx, '%', 38, 66, 9, 'rgba(255,255,255,0.6)', { weight: 600 });
   // sparkline
   ctx.strokeStyle = a.color;
@@ -475,6 +475,13 @@ function musicPage(ctx: CanvasRenderingContext2D, w: number, h: number) {
   text(ctx, '3:52', 229, 126, 6, 'rgba(255,255,255,0.6)', { weight: 600, font: MONO, align: 'right' });
 }
 
+/** Value-reactive metric colour: green → amber → red as the metric climbs. */
+export function metricColor(v: number, kind: 'load' | 'mem' | 'temp' = 'load'): string {
+  if (kind === 'temp') return v < 60 ? '#59d38d' : v < 76 ? '#f5c451' : '#ff6b6b';
+  if (kind === 'mem') return v < 60 ? '#59d38d' : v < 85 ? '#f5c451' : '#ff6b6b';
+  return v < 40 ? '#59d38d' : v < 70 ? '#f5c451' : '#ff6b6b';
+}
+
 function perfPage(ctx: CanvasRenderingContext2D, w: number, h: number) {
   const a = osAccent();
   ctx.fillStyle = '#111922';
@@ -493,13 +500,16 @@ function perfPage(ctx: CanvasRenderingContext2D, w: number, h: number) {
     const x = 9 + i * 75;
     glass(ctx, x, 33, 70, 42);
     text(ctx, label, x + 7, 44, 6, 'rgba(255,255,255,0.6)', { weight: 700 });
-    text(ctx, String(value), x + 7, 64, 18, '#ffffff', { weight: 780 });
+    const mc = metricColor(value, label === 'MEMORY' ? 'mem' : 'load');
+    text(ctx, String(value), x + 7, 64, 18, mc, { weight: 780 });
     text(ctx, unit, x + 7 + ctx.measureText(String(value)).width + 10, 64, 8, 'rgba(255,255,255,0.5)', { weight: 600 });
+    ctx.fillStyle = alpha(mc, 0.9);
+    ctx.fillRect(x + 7, 68, 56 * Math.min(1, value / 100), 1.5);
   });
 
   text(ctx, 'UTILIZATION · LAST 30 S', 10, 88, 6, 'rgba(255,255,255,0.5)', { weight: 700, font: MONO });
-  text(ctx, `${osState.metrics.temp}°C`, w - 10, 88, 6, 'rgba(255,255,255,0.5)', { weight: 700, font: MONO, align: 'right' });
-  ctx.strokeStyle = a.color;
+  text(ctx, `${osState.metrics.temp}°C`, w - 10, 88, 6, metricColor(osState.metrics.temp, 'temp'), { weight: 700, font: MONO, align: 'right' });
+  ctx.strokeStyle = metricColor(osState.metrics.cpu, 'load');
   ctx.lineWidth = 1.5;
   ctx.beginPath();
   osState.history.forEach((v, i) => {

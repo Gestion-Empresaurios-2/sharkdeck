@@ -30,7 +30,7 @@
   let lastUpload = $state('');
 
   // clock controls
-  let clockFrames = $state(12);
+  let clockFrames = $state(15);
   let clockSeconds = $state(true);
   let clockFg = $state('#E6E9F2');
   let clockBg = $state('#0A0C12');
@@ -72,11 +72,25 @@
       toast('err', errText(e));
     }
     startLive();
-    // The keyboard loops the frames we push, so refresh the clock about once a
-    // minute to stop it from counting backwards.
-    setInterval(() => {
-      if (clockLive && connected() && !busy) void clockPush(true);
-    }, 55000);
+    // The keyboard loops the frames we push, so the clock has to be re-anchored
+    // to real time well before the window runs out. Every frame carries an
+    // absolute timestamp, so a re-push corrects any drift instead of stacking
+    // it up, and the schedule is aligned to whole wall-clock seconds.
+    const REFRESH_MS = 10000;
+    const tick = () => {
+      const now = Date.now();
+      const next = Math.ceil((now + 250) / REFRESH_MS) * REFRESH_MS;
+      timer = window.setTimeout(async () => {
+        if (clockLive && connected() && !busy) await clockPush(true);
+        tick();
+      }, next - now);
+    };
+    tick();
+  });
+
+  let timer = 0;
+  $effect(() => () => {
+    if (timer) window.clearTimeout(timer);
   });
 
   const zoom = $derived(Math.max(2, Math.min(5, Math.floor(previewW / 64) * 2 || 3)));
@@ -263,16 +277,21 @@
             <input type="checkbox" bind:checked={clockSeconds} /> Show seconds
           </label>
           <span class="muted" style="font-size:12.5px">frames</span>
-          <input type="number" min={1} max={254} bind:value={clockFrames} style="width:64px" />
+          <input type="number" min={1} max={60} bind:value={clockFrames} style="width:64px" />
           <input type="color" bind:value={clockFg} />
           <input type="color" bind:value={clockBg} />
           <button class="btn primary" onclick={clockPush} disabled={busy === 'clock'}>
             {#if busy === 'clock'}<span class="spinner"></span>{/if}
             Upload clock
           </button>
+          <button class="btn" onclick={() => void clockPush(true)} disabled={busy === 'clock'} title="Re-anchor the clock to the current second right now">
+            Sync now
+          </button>
         </div>
         <p class="hint" style="margin-top:10px">
           Renders a live clock animation into slot 0 — reboot the keyboard to switch slots back.
+          Every frame carries an absolute timestamp, and the app re-anchors the window every 10 s, so the
+          seconds count forwards one at a time and never rewinds or skips.
         </p>
       </div>
 

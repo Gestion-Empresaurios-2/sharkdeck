@@ -69,9 +69,9 @@
     height: auto;
     image-rendering: pixelated;
     border-radius: 8px;
-    border: 1px solid var(--border-strong);
     background: #000;
-  }
+  box-shadow: var(--elev-1);
+}
   .live-dot {
     position: absolute;
     top: 8px;
@@ -93,5 +93,6 @@
     background: rgba(0, 0, 0, 0.55);
     padding: 2px 6px;
     border-radius: 4px;
-  }
+  box-shadow: var(--elev-1);
+}
 </style>

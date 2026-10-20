@@ -207,7 +207,6 @@
   .key {
     position: absolute;
     background: rgba(255, 255, 255, 0.055);
-    border: 1px solid var(--border);
     border-radius: 6px;
     display: flex;
     flex-direction: column;
@@ -217,15 +216,18 @@
     padding: 1px;
     transition: all 0.12s;
     overflow: hidden;
-  }
+  box-shadow: var(--elev-1);
+}
   .key:hover {
     background: rgba(91, 140, 255, 0.14);
     border-color: rgba(91, 140, 255, 0.4);
-  }
+  box-shadow: var(--elev-1);
+}
   .key.sel {
     background: var(--grad);
     border-color: transparent;
-  }
+  box-shadow: var(--elev-1);
+}
   .kt {
     font-size: 12px;
     font-weight: 620;
@@ -245,5 +247,5 @@
   }
   .editbox {
     border-color: rgba(91, 140, 255, 0.35);
-  }
+}
 </style>

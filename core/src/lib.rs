@@ -4,5 +4,6 @@
 pub mod hid;
 pub mod kb;
 pub mod layout;
+pub mod perkey;
 pub mod protocol;
 pub mod screen;

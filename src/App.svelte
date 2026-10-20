@@ -3,6 +3,7 @@
   import Screen from './pages/Screen.svelte';
   import Knob from './pages/Knob.svelte';
   import Lighting from './pages/Lighting.svelte';
+  import PerKey from './pages/PerKey.svelte';
   import Keymap from './pages/Keymap.svelte';
   import Macros from './pages/Macros.svelte';
   import Templates from './pages/Templates.svelte';
@@ -16,6 +17,7 @@
     { id: 'templates', label: 'Templates' },
     { id: 'knob', label: 'Knob' },
     { id: 'lighting', label: 'Lighting' },
+    { id: 'perkey', label: 'Per-key RGB' },
     { id: 'keymap', label: 'Keymap' },
     { id: 'macros', label: 'Macros' },
     { id: 'settings', label: 'Device' },
@@ -28,6 +30,7 @@
     templates: 'M2 2h5v5H2z M9 2h5v5H9z M2 9h5v5H2z M9 9h5v5H9z',
     knob: 'M8 2a6 6 0 016 6 6 6 0 01-6 6 6 6 0 01-6-6 6 6 0 016-6z M8 8m-2 0a2 2 0 104 0 2 2 0 10-4 0',
     lighting: 'M8 1v2 M8 13v2 M2 8h2 M12 8h2 M4 4l1.4 1.4 M10.6 10.6L12 12 M12 4l-1.4 1.4 M5.4 10.6L4 12 M8 5a3 3 0 100 6 3 3 0 000-6',
+    perkey: 'M2 4h12v8H2z M5 8m-1.6 0a1.6 1.6 0 103.2 0 1.6 1.6 0 10-3.2 0 M11 8m-1.6 0a1.6 1.6 0 103.2 0 1.6 1.6 0 10-3.2 0',
     keymap: 'M1.5 4h13v8h-13z M4 6.5h1 M7 6.5h1 M10 6.5h1 M12 6.5h1 M5 9.5h6',
     macros: 'M3 2h10v12H3z M5.5 5h5 M5.5 8h5 M5.5 11h3',
     settings: 'M8 5a3 3 0 103 3 3 3 0 00-3-3z M13.6 9.5l1.8-1.5-1.8-1.5.3-2.3-2.2-.7L10.4 2 8.2 2.9 6 2l-1.3 1.5-2.2.7.3 2.3L1 8l1.8 1.5-.3 2.3 2.2.7L6 14l2.2-.9 2.2.9 1.3-1.5 2.2-.7z',
@@ -104,6 +107,8 @@
       <Knob />
     {:else if store.page === 'lighting'}
       <Lighting />
+    {:else if store.page === 'perkey'}
+      <PerKey />
     {:else if store.page === 'keymap'}
       <Keymap />
     {:else if store.page === 'macros'}
@@ -132,8 +137,7 @@
     background: var(--panel-2);
     backdrop-filter: var(--material);
     -webkit-backdrop-filter: var(--material);
-    border-right: 1px solid var(--hairline);
-    display: flex;
+      display: flex;
     flex-direction: column;
     padding: 12px 10px;
     gap: 10px;
@@ -143,7 +147,6 @@
     align-items: center;
     gap: 10px;
     padding: 6px 8px 10px;
-    border-bottom: 1px solid var(--border);
   }
   .brand-tile {
     width: 46px;
@@ -154,7 +157,8 @@
     place-items: center;
     overflow: hidden;
     flex-shrink: 0;
-  }
+  box-shadow: var(--elev-1);
+}
   .brand-name {
     font-size: 15px;
     font-weight: 700;
@@ -186,7 +190,8 @@
     cursor: pointer;
     text-align: left;
     transition: background 0.12s ease, color 0.12s ease;
-  }
+  box-shadow: var(--elev-1);
+}
   .nav-btn:hover {
     background: var(--hover);
     color: var(--text);
@@ -204,11 +209,11 @@
     grid-template-columns: 1fr 1fr;
     gap: 0;
     margin-top: 8px;
-    border: 1px solid var(--border);
     border-radius: 8px;
     overflow: hidden;
     background: var(--panel-2);
-  }
+  box-shadow: var(--elev-1);
+}
   .theme-toggle button {
     display: flex;
     align-items: center;
@@ -220,9 +225,9 @@
     color: var(--dim);
     font-size: 12px;
     cursor: pointer;
-  }
+  box-shadow: var(--elev-1);
+}
   .theme-toggle button + button {
-    border-left: 1px solid var(--border);
   }
   .theme-toggle button:hover {
     background: var(--hover);
@@ -235,10 +240,10 @@
   }
   .dev-card {
     background: var(--panel-2);
-    border: 1px solid var(--border);
     border-radius: var(--radius);
     padding: 10px;
-  }
+  box-shadow: var(--elev-1);
+}
   .dev-row {
     display: flex;
     align-items: center;

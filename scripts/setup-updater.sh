@@ -15,10 +15,23 @@ set -eu
 # pipefail is a bash/ksh/zsh feature; enable it only when the shell has it.
 (set -o pipefail) 2>/dev/null && set -o pipefail || true
 
-ROOT="$(cd "$(dirname "$0")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$ROOT"
 
-KEY_DIR="$ROOT/.updater"
+# The keypair may live in either location depending on where it was generated:
+# the repo root (.updater/) or the scripts folder (scripts/.updater/).
+# Reuse whichever already exists so you never end up with two keypairs.
+KEY_DIR=""
+for cand in "$ROOT/.updater" "$SCRIPT_DIR/.updater"; do
+  if [ -f "$cand/signing.key" ]; then
+    KEY_DIR="$cand"
+    break
+  fi
+done
+if [ -z "$KEY_DIR" ]; then
+  KEY_DIR="$ROOT/.updater"
+fi
 KEY="$KEY_DIR/signing.key"
 mkdir -p "$KEY_DIR"
 
@@ -57,20 +70,50 @@ else
   fi
 fi
 
-PUB_B64="$(python3 - <<'PY'
+# The .pub file holds the public key; depending on the CLI version it is either
+# hex-encoded or already base64. Accept both, and look in either .updater dir.
+PUB_B64="$(python3 - "$ROOT/.updater" "$SCRIPT_DIR/.updater" <<'PY'
 import base64, pathlib, sys
-# The CLI prints the base64 public key; the .pub file next to the private key
-# holds the hex key. Accept any *.pub inside .updater as a fallback.
-cands = sorted(pathlib.Path(".updater").glob("*.pub"))
-if not cands:
-    sys.exit(1)
-for pub in cands:
-    hexkey = pub.read_text().strip().splitlines()[-1].strip()
-    try:
-        print(base64.b64encode(bytes.fromhex(hexkey)).decode())
-        sys.exit(0)
-    except Exception:
+
+def normalise(text: str) -> str | None:
+    lines = [l.strip() for l in text.strip().splitlines() if l.strip()]
+    # Some CLI versions print "Public key: <value>" — strip any label prefix.
+    cleaned = []
+    for line in lines:
+        if ":" in line and len(line.split(":")[-1].strip()) > 20:
+            line = line.split(":")[-1].strip()
+        cleaned.append(line)
+    for t in reversed(cleaned):
+        if not t:
+            continue
+        # hex-encoded key -> base64 (this is what tauri.conf.json expects)
+        try:
+            raw = bytes.fromhex(t)
+            if raw:
+                return base64.b64encode(raw).decode()
+        except ValueError:
+            pass
+        # already base64 -> keep as is
+        try:
+            raw = base64.b64decode(t, validate=True)
+            if raw:
+                return t
+        except Exception:
+            pass
+    return None
+
+for d in sys.argv[1:]:
+    folder = pathlib.Path(d)
+    if not folder.is_dir():
         continue
+    for pub in sorted(folder.glob("*.pub")):
+        try:
+            value = normalise(pub.read_text())
+        except Exception:
+            continue
+        if value:
+            print(value)
+            sys.exit(0)
 sys.exit(1)
 PY
 )"
@@ -93,12 +136,13 @@ PY
 
 echo
 echo "Next steps:"
-echo "  1. Add GitHub secrets: TAURI_SIGNING_PRIVATE_KEY (contents of $KEY)"
+echo "  1. Commit the public key:  git add -A && git commit -m 'updater: public key' && git push"
+echo "  2. Add GitHub secrets: TAURI_SIGNING_PRIVATE_KEY (contents of $KEY)"
 echo "     and TAURI_SIGNING_PRIVATE_KEY_PASSWORD (the password you chose)."
 echo "     From this folder:  gh secret set TAURI_SIGNING_PRIVATE_KEY < $KEY"
 echo "                         gh secret set TAURI_SIGNING_PRIVATE_KEY_PASSWORD"
-echo "  2. Tag a release:  git tag v0.2.0 && git push origin v0.2.0"
-echo "  3. The workflow builds the AppImage + .sig and publishes latest.json;"
+echo "  3. Tag a release:  git tag v0.2.0 && git push origin v0.2.0"
+echo "  4. The workflow builds the AppImage + .sig and publishes latest.json;"
 echo "     SharkDeck's Device page then offers 'Install & restart'."
 echo
 echo "NOTE: the release feed URL must be reachable without auth — make the"

@@ -3561,7 +3561,7 @@ dependencies = [
 
 [[package]]
 name = "sharkdeck"
-version = "0.2.9"
+version = "0.3.0"
 dependencies = [
  "base64 0.22.1",
  "chrono",
@@ -3577,7 +3577,7 @@ dependencies = [
 
 [[package]]
 name = "sharkdeck-core"
-version = "0.2.9"
+version = "0.3.0"
 dependencies = [
  "base64 0.22.1",
  "chrono",

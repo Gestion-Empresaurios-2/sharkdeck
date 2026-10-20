@@ -66,9 +66,15 @@
     const unlisten = listen<api.KnobAction>('sharkdeck://knob', (e) => {
       const dir = e.payload?.dir;
       if (!knobControl) return;
-      if (dir === 'left') cycle(-1);
-      else if (dir === 'right') cycle(1);
-      else if (dir === 'press') void push(true);
+      if (dir === 'left') {
+        cycle(-1);
+        if (knobPush) void push(true);
+      } else if (dir === 'right') {
+        cycle(1);
+        if (knobPush) void push(true);
+      } else if (dir === 'press') {
+        void push(true);
+      }
     });
     return () => {
       clearInterval(t);
@@ -155,6 +161,7 @@
      rotates them on its own — no further pushes needed. */
   let dwell = $state(100);
   let knobControl = $state(false);
+  let knobPush = $state(false);
   let knobNodes = $state<string[]>([]);
   async function pushCarousel() {
     if (!store.device) return toast('err', 'No device connected');
@@ -577,6 +584,10 @@
       <label class="switch-row">
         <input type="checkbox" bind:checked={knobControl} />
         <span>Let the knob drive the screen</span>
+      </label>
+      <label class="switch-row">
+        <input type="checkbox" bind:checked={knobPush} />
+        <span>Push the screen the knob selects</span>
       </label>
       <p class="hint">
         Turn left / right to change the keyboard screen, press to push the current one.

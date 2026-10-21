@@ -1,6 +1,6 @@
 <script lang="ts">
   import * as api from '../lib/tauri';
-  import { store, toast, errText, probeDevice, connected } from '../lib/store.svelte';
+  import { store, setAutopush, toast, errText, probeDevice, connected } from '../lib/store.svelte';
   import type { KbOptions } from '../lib/types';
   import { onMount } from 'svelte';
 
@@ -182,6 +182,24 @@
           </button>
           <button class="btn" onclick={disconnect} disabled={!connected()}>Disconnect</button>
         </div>
+      </div>
+
+      <div class="panel">
+        <h3>Automatic pushes</h3>
+        <label class="switch-row">
+          <input type="checkbox" bind:checked={store.autopush} onchange={(e) => setAutopush((e.currentTarget as HTMLInputElement).checked)} />
+          <span>Let SharkDeck refresh the keyboard screen on its own</span>
+        </label>
+        <p class="hint">
+          {#if store.autopush}
+            On: the FRAME OS screen and the clock are re-pushed on a timer, so the
+            keyboard's display is continuously overwritten.
+          {:else}
+            Off (recommended): the keyboard keeps whatever it is showing. SharkDeck
+            only writes to the panel when you press <em>Push</em>, upload an image or
+            use the knob.
+          {/if}
+        </p>
       </div>
 
       <div class="panel">

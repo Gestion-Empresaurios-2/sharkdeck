@@ -86,7 +86,7 @@
       const refresh = clockSeconds ? 10000 : 60000;
       const next = Math.ceil((now + 250) / refresh) * refresh;
       timer = window.setTimeout(async () => {
-        if (clockLive && connected() && !busy) await clockPush(true);
+        if (store.autopush && clockLive && connected() && !busy) await clockPush(true);
         tick();
       }, next - now);
     };

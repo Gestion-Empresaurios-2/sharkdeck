@@ -137,7 +137,7 @@
     const every = Math.max(2, cycleSecs) * 1000;
     const id = setInterval(() => {
       cycle(1);
-      if (pushOnCycle) void push(true);
+      if (pushOnCycle && store.autopush) void push(true);
     }, every);
     return () => clearInterval(id);
   });
@@ -289,7 +289,7 @@
      30 frames run out, so the clock and the counters never rewind. */
   let keepLive = $state(false);
   $effect(() => {
-    if (!keepLive) return;
+    if (!keepLive || !store.autopush) return;
     const id = setInterval(() => {
       if (store.device && !busy) void pushAnimation(true);
     }, 55000);

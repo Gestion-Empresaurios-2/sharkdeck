@@ -49,6 +49,15 @@ function initTheme(): Theme {
   return 'light';
 }
 
+function initAutopush(): boolean {
+  try {
+    return localStorage.getItem('sd-autopush') === '1';
+  } catch {
+    /* storage unavailable */
+  }
+  return false;
+}
+
 export const store = $state({
   page: 'screen' as string,
   device: null as DeviceInfo | null,
@@ -57,6 +66,11 @@ export const store = $state({
   toasts: [] as Toast[],
   theme: initTheme() as Theme,
   accent: initAccent() as AccentKey,
+  // Master switch for *automatic* pushes to the keyboard screen. Off by
+  // default: the app then only writes to the panel when the user asks for
+  // it, so the keyboard keeps its own content instead of being overwritten
+  // every few seconds.
+  autopush: initAutopush() as boolean,
   // Exposed on the store as well as as named exports: pages call both
   // `store.toast(...)` and `toast(...)`.
   toast,
@@ -66,7 +80,18 @@ export const store = $state({
   applyTheme,
   toggleTheme,
   applyAccent,
+  setAutopush,
 });
+
+/** Enable or disable every *automatic* push to the keyboard screen. */
+export function setAutopush(on: boolean) {
+  store.autopush = on;
+  try {
+    localStorage.setItem('sd-autopush', on ? '1' : '0');
+  } catch {
+    /* storage unavailable */
+  }
+}
 
 export function applyTheme(t: Theme) {
   store.theme = t;

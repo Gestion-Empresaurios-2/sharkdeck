@@ -127,6 +127,8 @@ fn run(cmd: &str, args: &[String]) -> i32 {
         }),
         "scan" => cmd_scan(),
         "factory-reset" => cmd_factory_reset(args),
+        "display-erase" => cmd_erase(args, false),
+        "flash-erase" => cmd_erase(args, true),
         "events" => cmd_events(args),
         // hidden debug helper: per-key RGB geometry, no device access
         "perkey-dry" => cmd_perkey_dry(),
@@ -932,4 +934,29 @@ fn cmd_scan() -> i32 {
             1
         }
     }
+}
+
+fn cmd_erase(args: &[String], full_flash: bool) -> i32 {
+    let confirmed = args.iter().any(|a| a == "--yes");
+    if !confirmed {
+        if full_flash {
+            eprintln!(
+                "flash-erase: this ERASES the whole flash chip (pictures, animations, keymap, macros, lighting and switch settings) and takes ~60 s.\nIt cannot be undone - only the host-side settings backup can restore them.\nRe-run with --yes to proceed."
+            );
+        } else {
+            eprintln!(
+                "display-erase: this erases the pictures and animations stored on the keyboard (everything SharkDeck pushed to the screen).\nThe keymap, macros and lighting are NOT touched.\nRe-run with --yes to proceed."
+            );
+        }
+        return 2;
+    }
+    with_kb(|kb| {
+        if full_flash {
+            kb.flash_erase()?;
+            Ok("flash erase sent - the keyboard rebooted with an empty flash".into())
+        } else {
+            kb.display_erase()?;
+            Ok("display erase sent - stored pictures and animations cleared".into())
+        }
+    })
 }

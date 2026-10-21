@@ -249,6 +249,37 @@ impl Keyboard {
         Ok(())
     }
 
+    /// Erase the DISPLAY store: every picture and animation that was pushed to
+    /// the screen (our FRAME OS frames, the clock animation, the carousel).
+    /// The keyboard then falls back to its own built-in screens again.
+    /// Keymap, macros, lighting and switch settings are NOT touched.
+    ///
+    /// This deliberately bypasses the transport denylist: it is the explicit,
+    /// consented path (the CLI requires `--yes`).
+    pub fn display_erase(&self) -> Result<(), String> {
+        self.erase_op(0x2C, 3_000)
+    }
+
+    /// Erase the whole flash chip: pictures, animations, keymap, macros,
+    /// lighting and switch settings. The vendor's full flash erase takes
+    /// ~55 s and reboots the board. Last resort — only with a settings
+    /// backup at hand.
+    pub fn flash_erase(&self) -> Result<(), String> {
+        self.erase_op(0xAC, 60_000)
+    }
+
+    fn erase_op(&self, op: u8, wait_ms: u64) -> Result<(), String> {
+        let req = cmd_bit7(op, &[]);
+        let mut wire = [0u8; FEATURE_LEN];
+        wire[1..].copy_from_slice(&req);
+        self.api.with(&self.path, |dev| {
+            dev.send_feature_report(&wire).map_err(|e| e.to_string())?;
+            Ok(())
+        })?;
+        sleep(Duration::from_millis(wait_ms));
+        Ok(())
+    }
+
     pub fn send(&self, payload: Payload) -> Result<(), String> {
         Self::assert_safe_op(payload[0])?;
         let mut wire = [0u8; FEATURE_LEN];
